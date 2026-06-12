@@ -45,7 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # refresh after release, rebuild with `docker compose build --no-cache`.
 # ---------------------------------------------------------------------------
 RUN nuclei -update-templates -silent || true
-RUN searchsploit -u
+
 WORKDIR /app
 
 # ---------------------------------------------------------------------------
