@@ -1,0 +1,34 @@
+# VulnFlow Orchestration Engine — runtime composition
+#
+# One-command start:    docker compose up --build
+# Stop:                 docker compose down
+# Refresh image:        docker compose build --no-cache
+#
+# After startup the dashboard is at  http://127.0.0.1:5000
+
+services:
+  vulnflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vulnflow:latest
+    container_name: vulnflow
+
+    # Host networking — the container shares the host's network stack so that:
+    #   1. Scanners can reach LAN targets (Metasploitable 2, DVWA on the same
+    #      subnet) the way they would from the host directly. Docker's default
+    #      bridge would NAT outgoing traffic and break service-version probes.
+    #   2. Scanners can reach internet targets (testfire.net, scanme.nmap.org)
+    #      with no extra config.
+    # Caveat: `ports:` mappings are ignored in host networking mode; the Flask
+    # process binds to 127.0.0.1:5000 on the host directly.
+    network_mode: host
+
+    # Persist the SQLite database across container restarts. The instance/
+    # folder on the host backs /app/instance inside the container, so scan
+    # history survives `docker compose down` + `up`.
+    volumes:
+      - ./instance:/app/instance
+
+    # Keep the container alive across reboots (handy for the FYP demo machine).
+    restart: unless-stopped

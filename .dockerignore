@@ -1,0 +1,56 @@
+# Mirror of .gitignore — keeps the build context lean and prevents personal
+# files from being copied into the image even if they happen to be in the
+# working tree at build time.
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Flask runtime state ---
+# instance/scans.db is recreated by `flask db upgrade` inside the container,
+# AND the host's instance/ is mounted as a volume at runtime — so there's no
+# reason to bake any DB content into the image.
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Generated reports (runtime artefacts) ---
+vulnflow-report-*.pdf
+vulnflow-*.json
+
+# --- Editor / IDE / tooling ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.claude/
+
+# --- Personal report drafts and notes (must never end up in the image) ---
+*.docx
+1211309530_*
+myfyp/
+
+# --- Git metadata ---
+# Repo history isn't needed inside the container.
+.git/
+.gitignore
+
+# --- Docker artefacts themselves ---
+Dockerfile
+docker-compose.yml
+.dockerignore

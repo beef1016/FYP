@@ -1,4 +1,4 @@
-# Orchestration Engine
+# VulnFlow Orchestration Engine
 
 A web-based automated workflow orchestration engine that chains industry-standard
 open-source security tools — Nmap, WhatWeb, Gobuster, Nuclei — against a target,
@@ -64,7 +64,71 @@ dispatch map. No controller, template, or status-string changes required.
 For the deep design write-up, see [ARCHITECTURE.md](ARCHITECTURE.md). For the FYP spec it
 implements, see [FYP_PROJECT_SPEC.md](FYP_PROJECT_SPEC.md).
 
-## Requirements
+## Run with Docker (recommended)
+
+The repo ships a `Dockerfile` + `docker-compose.yml` so the full stack — Python
+runtime, all five scanner CLIs, the Exploit-DB mirror, and the Nuclei templates
+— is reproducible from a clean machine. No need to install anything on the host
+beyond Docker itself.
+
+### Prerequisites
+
+- Docker Engine 20.10+ and Docker Compose v2.
+
+### One-command start
+
+```bash
+git clone https://github.com/beef1016/FYP.git
+cd FYP
+docker compose up --build
+```
+
+First build takes ~5–10 minutes (Kali base image, apt installs, Nuclei template
+download). Subsequent runs use the cached layers and start in seconds.
+
+Once running, open <http://127.0.0.1:5000>.
+
+### Why host networking
+
+`docker-compose.yml` sets `network_mode: host` so the container shares your
+host's network stack. That's needed for two reasons:
+
+1. **LAN targets** — scanning a Metasploitable 2 VM, DVWA box, or any device
+   on the same subnet works exactly as it would from the host. Docker's
+   default bridge would NAT outgoing traffic and break Nmap's service-version
+   probes.
+2. **Internet targets** — scanning hosts like `testfire.net` or
+   `scanme.nmap.org` works with no extra config.
+
+The trade-off: with host networking, the `ports:` directive doesn't apply.
+Flask binds to `127.0.0.1:5000` on the host directly.
+
+### Image refresh
+
+Nuclei templates and the Exploit-DB mirror are **baked into the image at build
+time** for reproducibility. To pick up newer templates / exploits, rebuild:
+
+```bash
+docker compose build --no-cache
+docker compose up
+```
+
+### Stopping
+
+```bash
+docker compose down
+```
+
+Your scan history lives in `./instance/scans.db` on the host (mounted as a
+volume) and survives `down` + `up`.
+
+---
+
+## Run without Docker (Kali host install)
+
+If you'd rather run directly on a Kali host without Docker:
+
+### Requirements
 
 - **OS**: Kali Linux (other Debian-family distros may work; the wordlist path
   and pre-installed tool set assume Kali).
@@ -76,12 +140,12 @@ implements, see [FYP_PROJECT_SPEC.md](FYP_PROJECT_SPEC.md).
   - `gobuster` (depends on the wordlist `/usr/share/wordlists/dirb/common.txt` — `apt install dirb` provides it)
   - `searchsploit` (provided by `exploitdb`)
 
-## Installation
+### Installation
 
 ```bash
 # Clone
-git clone https://github.com/<your-username>/<repo-name>.git
-cd <repo-name>
+git clone https://github.com/beef1016/FYP.git
+cd FYP
 
 # Set up the Python environment
 python3 -m venv .venv
@@ -157,6 +221,6 @@ exploit code lives in the local Exploit-DB; it never executes exploit payloads.
 
 ## License
 
-<!-- Add your chosen license. MIT is the safe default for academic projects; pick whatever your university allows. -->
-
-MIT.
+Released under the [MIT License](LICENSE). You're free to use, modify, and
+redistribute the code — subject to keeping the copyright notice intact and
+acknowledging that the software is provided as-is.
