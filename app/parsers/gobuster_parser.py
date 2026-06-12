@@ -4,14 +4,15 @@ from app.extensions import db
 from app.models import ScanResult
 
 
-# Gobuster -q output lines look like:  "/admin                (Status: 301) [Size: 178]"
-_PATH_LINE = re.compile(r"^(/\S+)\s+\(Status:\s*(\d{3})\)")
+# Gobuster v3.x -q output lines look like:
+#     dav                  (Status: 301) [Size: 321]
+#     phpinfo.php          (Status: 200) [Size: 48108]
+# No leading slash on the path — we prepend one when storing.
+_PATH_LINE = re.compile(r"^(\S+)\s+\(Status:\s*(\d{3})\)")
 
 
 def parse_gobuster_text(text_data: str, scan_id: str, target: str,
                         port: int | None = None, scheme: str = "http"):
-    """Parser dispatch — `port` is filled in by the orchestrator so the row
-    can record which HTTP service the path was found on."""
     if not text_data or "error" in text_data:
         print("[PARSER] Invalid Gobuster data received.")
         return
@@ -25,6 +26,8 @@ def parse_gobuster_text(text_data: str, scan_id: str, target: str,
             if not m:
                 continue
             discovered_path = m.group(1)
+            if not discovered_path.startswith("/"):
+                discovered_path = "/" + discovered_path
             status_code = m.group(2)
 
             finding = (
