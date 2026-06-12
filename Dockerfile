@@ -44,7 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Baked into the image at build time so CVE coverage is reproducible. To
 # refresh after release, rebuild with `docker compose build --no-cache`.
 # ---------------------------------------------------------------------------
-RUN nuclei -update-templates -silent || true
+RUN nuclei -update-templates -silent
 
 WORKDIR /app
 
