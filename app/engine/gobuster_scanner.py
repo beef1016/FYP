@@ -30,6 +30,6 @@ class GobusterScanner(BaseScanner):
         return [
             "gobuster", "dir",
             "-u", self._url(),
-            "-w", "/usr/share/wordlists/dirb/common.txt",
+            "-w", "/usr/share/dirb/wordlists/common.txt",
             "-q",
         ]
