@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results Dashboard - VulnFlow</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .severity-Critical { background-color: #dc3545; color: white; }
+        .severity-High { background-color: #fd7e14; color: white; }
+        .severity-Medium { background-color: #ffc107; color: black; }
+        .severity-Low { background-color: #20c997; color: white; }
+        .severity-Info { background-color: #0dcaf0; color: black; }
+        .scan-meta { font-size: 0.8rem; color: #adb5bd; }
+        .status-COMPLETED { color: #75e69b; font-weight: 600; }
+        .status-FAILED    { color: #ff8b8b; font-weight: 600; }
+        .status-RUNNING,
+        .status-PENDING   { color: #7bc8ff; font-weight: 600; }
+        .severity-chart-wrap { width: 220px; max-width: 220px; }
+        .severity-chart-wrap canvas { height: 180px !important; }
+        /* Sortable column headers */
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background-color: #e9ecef; }
+        th.sortable::after { content: " ⇅"; color: #adb5bd; font-size: 0.85em; }
+        th.sortable[data-direction="desc"]::after { content: " ▼"; color: #0d6efd; }
+        th.sortable[data-direction="asc"]::after  { content: " ▲"; color: #0d6efd; }
+    </style>
+</head>
+<body>
+
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-primary">Vulnerability Intelligence Dashboard</h2>
+        <div class="d-flex gap-2">
+            <a href="/history" class="btn btn-outline-secondary">📜 Scan History</a>
+            <a href="/" class="btn btn-outline-secondary">← Back to Scanner</a>
+        </div>
+    </div>
+
+    {% for view in scan_views %}
+    {% set scan = view.scan %}
+    <div class="card mb-5 shadow-sm">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0">{{ scan.target }}</h5>
+                <div class="scan-meta">
+                    Scan&nbsp;{{ scan.scan_id[:8] }}
+                    &middot; <span class="status-{{ scan.status }}">{{ scan.status }}</span>
+                    &middot; Modules: {{ scan.selected_modules | join(', ') if scan.selected_modules else '—' }}
+                    &middot; Started: {{ scan.start_time.strftime('%Y-%m-%d %H:%M UTC') if scan.start_time else '—' }}
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="/api/scan/{{ scan.scan_id }}/report/pdf"
+                   class="btn btn-sm btn-outline-light">⬇ PDF</a>
+                <a href="/api/scan/{{ scan.scan_id }}/report/json"
+                   class="btn btn-sm btn-outline-light">⬇ JSON</a>
+            </div>
+        </div>
+
+        <div class="card-body">
+            {% if scan.results %}
+                <div class="row g-3 mb-3 align-items-center">
+                    <div class="col-md-3">
+                        <div class="severity-chart-wrap">
+                            <canvas
+                                class="severity-donut"
+                                data-counts='{{ view.counts | tojson }}'
+                                data-total="{{ view.total_findings }}"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-9">
+                        <div class="d-flex flex-wrap gap-3">
+                            {% for sev in severity_order %}
+                                {% if view.counts[sev] %}
+                                <div>
+                                    <span class="badge severity-{{ sev }}">{{ sev }}</span>
+                                    <span class="fw-bold">{{ view.counts[sev] }}</span>
+                                </div>
+                                {% endif %}
+                            {% endfor %}
+                            <div class="text-muted">
+                                <span class="fw-bold">{{ view.total_findings }}</span> total findings
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <table class="table table-hover align-middle findings-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tool</th>
+                            <th class="sortable" data-sort="severity"
+                                title="Click to sort by severity">Severity</th>
+                            <th>Host : Port</th>
+                            <th>Finding</th>
+                            <th>CVE / Exploit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in scan.results %}
+                        <tr>
+                            <td><span class="badge bg-secondary">{{ r.tool_name }}</span></td>
+                            <td><span class="badge severity-{{ r.severity }}">{{ r.severity }}</span></td>
+                            <td>
+                                <small>
+                                    {{ r.host }}{% if r.port %}:{{ r.port }}{% endif %}
+                                    {% if r.service %}<br><span class="text-muted">{{ r.service }}</span>{% endif %}
+                                </small>
+                            </td>
+                            <td><small>{{ r.finding }}</small></td>
+                            <td>
+                                {% if r.cve_id %}
+                                    <a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id | upper }}"
+                                       target="_blank" rel="noopener noreferrer"
+                                       class="badge bg-dark text-decoration-none mb-1"
+                                       title="View on NVD">CVE: {{ r.cve_id }}</a><br>
+                                {% elif r.product and r.version %}
+                                    <span class="badge bg-secondary mb-1">{{ r.product }} {{ r.version }}</span><br>
+                                {% endif %}
+                                {% if r.has_public_exploit %}
+                                    <span class="badge bg-danger">⚠️ {{ r.correlations | length }} public exploit(s)</span>
+                                    {% for c in r.correlations[:2] %}
+                                        <br>
+                                        {% if c.exploit_id %}
+                                            <a href="https://www.exploit-db.com/exploits/{{ c.exploit_id }}"
+                                               target="_blank" rel="noopener noreferrer"
+                                               class="small text-decoration-none"
+                                               title="View on Exploit-DB">
+                                                <small class="text-muted">↗ {{ c.exploit_title }}</small>
+                                            </a>
+                                            <span class="badge bg-light text-dark ms-1" style="font-size: 0.65rem;">EDB-{{ c.exploit_id }}</span>
+                                        {% else %}
+                                            <small class="text-muted">{{ c.exploit_title }}</small>
+                                        {% endif %}
+                                        {% if c.exploit_path %}<br><small class="text-muted">{{ c.exploit_path }}</small>{% endif %}
+                                    {% endfor %}
+                                    {% if r.correlations | length > 2 %}
+                                        <br><small class="text-muted">… and {{ r.correlations | length - 2 }} more</small>
+                                    {% endif %}
+                                {% elif r.cve_id or (r.product and r.version) %}
+                                    <span class="badge bg-success">No public exploit</span>
+                                {% else %}
+                                    <span class="text-muted small">N/A</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="alert alert-success mb-0">No findings recorded for this scan.</div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+        <div class="alert alert-info text-center">
+            <h4>No scans yet.</h4>
+            <p>Go back to the scanner to start your first scan.</p>
+        </div>
+    {% endfor %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+    // Severity colours match the badge palette in CSS above.
+    const SEVERITY_COLOR = {
+        Critical: '#dc3545',
+        High:     '#fd7e14',
+        Medium:   '#ffc107',
+        Low:      '#20c997',
+        Info:     '#0dcaf0',
+    };
+    const SEVERITY_ORDER = {{ severity_order | tojson }};
+
+    // ---- Sortable findings table -----------------------------------------
+    // Severity is ordinal (Critical > High > Medium > Low > Info), so we sort
+    // by a weight map rather than alphabetically. State (the active direction
+    // arrow + asc/desc) is held on the <th> via data-direction.
+    const SEVERITY_WEIGHT = { Critical: 5, High: 4, Medium: 3, Low: 2, Info: 1 };
+
+    function severityCellWeight(row) {
+        const badge = row.querySelector('td:nth-child(2) .badge');
+        if (!badge) return 0;
+        return SEVERITY_WEIGHT[badge.textContent.trim()] ?? 0;
+    }
+
+    function sortRowsBySeverity(table, direction) {
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        const rows = [...tbody.querySelectorAll('tr')];
+        const factor = direction === 'asc' ? 1 : -1;
+        rows.sort((a, b) => (severityCellWeight(a) - severityCellWeight(b)) * factor);
+        // Re-append in new order (DOM moves, no clone — preserves event listeners)
+        rows.forEach(r => tbody.appendChild(r));
+    }
+
+    document.querySelectorAll('table.findings-table').forEach(table => {
+        const headers = table.querySelectorAll('th.sortable');
+        headers.forEach(th => th.addEventListener('click', () => {
+            const sortKey = th.dataset.sort;
+            // Toggle between desc → asc → desc on subsequent clicks
+            const current = th.dataset.direction;
+            const next = current === 'desc' ? 'asc' : 'desc';
+            // Reset siblings so only one column shows an active arrow
+            headers.forEach(other => {
+                if (other !== th) other.removeAttribute('data-direction');
+            });
+            th.dataset.direction = next;
+            if (sortKey === 'severity') sortRowsBySeverity(table, next);
+        }));
+    });
+
+    document.querySelectorAll('canvas.severity-donut').forEach(canvas => {
+        const counts = JSON.parse(canvas.dataset.counts || '{}');
+        // Only include severities with non-zero counts so the legend stays tidy.
+        const present = SEVERITY_ORDER.filter(s => (counts[s] || 0) > 0);
+        if (present.length === 0) return;
+        new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: present,
+                datasets: [{
+                    data: present.map(s => counts[s]),
+                    backgroundColor: present.map(s => SEVERITY_COLOR[s]),
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '55%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}` } },
+                },
+            },
+        });
+    });
+</script>
+</body>
+</html>

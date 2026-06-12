@@ -1,0 +1,42 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Flask / SQLAlchemy ---
+# The runtime DB is created locally via `flask db upgrade`.
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Generated reports ---
+# PDFs / JSON exports the app produces at runtime.
+vulnflow-report-*.pdf
+vulnflow-*.json
+
+# --- Editor / IDE / tooling ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.claude/
+
+# --- Personal report drafts and notes (keep private) ---
+# These are personal artifacts that shouldn't ship with the source.
+*.docx
+1211309530_*
+myfyp/
