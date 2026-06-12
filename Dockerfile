@@ -26,6 +26,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Bundled into one RUN so the apt cache is cleaned in the same layer (smaller image).
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
         python3 \
         python3-pip \
         python3-venv \
@@ -44,7 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # refresh after release, rebuild with `docker compose build --no-cache`.
 # ---------------------------------------------------------------------------
 RUN nuclei -update-templates -silent || true
-
+RUN searchsploit -u
 WORKDIR /app
 
 # ---------------------------------------------------------------------------
