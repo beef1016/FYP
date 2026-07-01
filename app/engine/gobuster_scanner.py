@@ -27,6 +27,10 @@ class GobusterScanner(BaseScanner):
         # -q: quiet (suppresses banner so the parser sees only result lines)
         # Wordlist hard-coded to Kali's dirb common.txt for now — FYP2 could
         # promote this to a per-scan setting.
+        # Path is the one the `dirb` apt package actually installs. The
+        # reversed `/usr/share/wordlists/dirb/...` only exists on a full Kali
+        # (via the `wordlists` package symlink), NOT in the minimal Docker
+        # image — using it there makes Gobuster find no wordlist → 0 results.
         return [
             "gobuster", "dir",
             "-u", self._url(),

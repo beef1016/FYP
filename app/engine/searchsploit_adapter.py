@@ -18,7 +18,9 @@ class SearchsploitTool(ManagedTool):
     name = "searchsploit"
     cli_name = "searchsploit"
     apt_package = "exploitdb"
-    version_args = ["--version"]
+    # searchsploit (a bash wrapper) has no version flag — `--version` errors
+    # with "illegal option". Skip the probe; the apt package is the version.
+    version_args = None
 
     @classmethod
     def update_command(cls) -> str:

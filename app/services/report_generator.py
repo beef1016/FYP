@@ -6,6 +6,7 @@ Outputs: bytes for download.
 import io
 import json
 from datetime import datetime, timezone
+from xml.sax.saxutils import escape as _esc
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -34,11 +35,11 @@ class ReportGenerator:
             buf, pagesize=A4,
             leftMargin=15*mm, rightMargin=15*mm,
             topMargin=15*mm, bottomMargin=15*mm,
-            title=f"VulnFlow Report — {scan.target}",
+            title=f"ExploitLink Report — {scan.target}",
         )
 
         story = [
-            Paragraph("VulnFlow Vulnerability Report", styles["title"]),
+            Paragraph("ExploitLink Vulnerability Report", styles["title"]),
             Paragraph(f"<b>Target:</b> {scan.target}", styles["body"]),
             Paragraph(f"<b>Scan ID:</b> {scan.scan_id}", styles["body"]),
             Paragraph(f"<b>Status:</b> {scan.status}", styles["body"]),
@@ -105,12 +106,15 @@ class ReportGenerator:
                     "finding": r.finding,
                     "severity": r.severity,
                     "cve_id": r.cve_id,
+                    "finding_class": r.finding_class,
+                    "exploitation_context": r.exploitation_context,
                     "raw_output": r.raw_output,
                     "exploits": [
                         {
                             "title": c.exploit_title,
                             "edb_id": c.exploit_id,
                             "path": c.exploit_path,
+                            "synopsis": c.synopsis,
                         }
                         for c in r.correlations
                     ],
@@ -158,8 +162,8 @@ class ReportGenerator:
 
             if r.correlations:
                 bits.append(f"<b>{len(r.correlations)} public exploit(s):</b>")
-                for c in r.correlations[:3]:
-                    title = c.exploit_title or "(untitled)"
+                for c in r.correlations:
+                    title = _esc(c.exploit_title or "(untitled)")
                     if c.exploit_id:
                         # Linked title — readers can click straight through to the
                         # rendered Exploit-DB page from the PDF.
@@ -170,12 +174,16 @@ class ReportGenerator:
                         )
                     else:
                         title_html = title
-                    path = c.exploit_path or "(no path)"
+                    path = _esc(c.exploit_path or "(no path)")
                     bits.append(f"• {title_html}<br/>&nbsp;&nbsp;<font size=\"7\" color=\"#6c757d\">{path}</font>")
-                if len(r.correlations) > 3:
-                    bits.append(f"… and {len(r.correlations) - 3} more")
-            elif r.cve_id or (r.product and r.version):
-                bits.append("No public exploit found.")
+                    if c.synopsis:
+                        bits.append(
+                            f'&nbsp;&nbsp;<font size="7" color="#0d6efd">{_esc(c.synopsis)}</font>'
+                        )
+            else:
+                ctx = r.exploitation_context
+                if ctx:
+                    bits.append(f'<i><font color="#6c757d">{_esc(ctx)}</font></i>')
 
             exploit_cell = "<br/>".join(bits) if bits else "&mdash;"
 

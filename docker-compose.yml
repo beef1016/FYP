@@ -1,34 +1,126 @@
-# VulnFlow Orchestration Engine — runtime composition
+# ExploitLink Orchestration Engine — runtime composition (FYP lab profile)
 #
 # One-command start:    docker compose up --build
 # Stop:                 docker compose down
 # Refresh image:        docker compose build --no-cache
 #
-# After startup the dashboard is at  http://127.0.0.1:5000
+# After startup the dashboard is at  https://127.0.0.1/  (HTTPS via Caddy)
+# Plain HTTP automatically redirects to HTTPS.
+# Default credentials: see EXPLOITLINK_AUTH_USER + EXPLOITLINK_AUTH_PASSWORD below.
+#
+# ──────────────────────────────────────────────────────────────────────
+# ARCHITECTURE
+# ──────────────────────────────────────────────────────────────────────
+#   Browser ──https──► caddy (:443) ──http──► exploitlink (127.0.0.1:5000)
+#                       │
+#                       └─ TLS terminated here. Flask only ever sees plain HTTP
+#                          from loopback. External clients can ONLY reach
+#                          Caddy's :443 — the Flask port is loopback-only.
+#
+# ──────────────────────────────────────────────────────────────────────
+# SECURITY POSTURE NOTE (FYP lab profile)
+# ──────────────────────────────────────────────────────────────────────
+# This compose file configures the app for the FYP Metasploitable 2 lab
+# demonstration. Two deliberate departures from production-safe defaults:
+#
+#   1. EXPLOITLINK_ALLOW_PRIVATE_TARGETS=true
+#      ↳ permits scanning of RFC1918 / loopback / link-local IPs. Required
+#        for the Metasploitable 2 demo (target is 192.168.x.x). The app's
+#        production default REFUSES these targets to block SSRF / internal
+#        recon. Remove this line for a production-style deployment.
+#
+#   2. network_mode: host
+#      ↳ required so the container can reach LAN VM targets (Metasploitable
+#        in VMware). Trade-off: container shares the host's network stack
+#        completely. For internet-only scanning, comment this out and use
+#        port mappings instead.
+#
+# Set EXPLOITLINK_AUTH_PASSWORD to a strong value before running, especially
+# if Caddy is reachable from anywhere other than the host's loopback.
 
 services:
-  vulnflow:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: vulnflow:latest
-    container_name: vulnflow
+  # ── Application container ──────────────────────────────────────────
+  exploitlink:
+    build: { context: ., dockerfile: Dockerfile }
+    image: exploitlink:latest
+    container_name: exploitlink
 
-    # Host networking — the container shares the host's network stack so that:
-    #   1. Scanners can reach LAN targets (Metasploitable 2, DVWA on the same
-    #      subnet) the way they would from the host directly. Docker's default
-    #      bridge would NAT outgoing traffic and break service-version probes.
-    #   2. Scanners can reach internet targets (testfire.net, scanme.nmap.org)
-    #      with no extra config.
-    # Caveat: `ports:` mappings are ignored in host networking mode; the Flask
-    # process binds to 127.0.0.1:5000 on the host directly.
-    network_mode: host
+    # ── NETWORKING PROFILE — pick ONE (the caddy service has a matching toggle) ──
+    # [Kali / Linux] host networking — best for LAN scanning. Uncomment the
+    #   next line AND set FLASK_HOST: 127.0.0.1 below.
+    # network_mode: host
+    #
+    # [Windows demo] (ACTIVE) bridge networking — Caddy reaches Flask by the
+    #   service name `exploitlink`. Port 5000 is intentionally NOT published,
+    #   so Flask stays internal-only and Caddy's :443 is the sole exposed
+    #   surface. Reliable on Docker Desktop, where host networking is not.
 
-    # Persist the SQLite database across container restarts. The instance/
-    # folder on the host backs /app/instance inside the container, so scan
-    # history survives `docker compose down` + `up`.
     volumes:
+      # SQLite DB persistence across container restarts.
       - ./instance:/app/instance
 
-    # Keep the container alive across reboots (handy for the FYP demo machine).
+    environment:
+      # === REQUIRED: app refuses to start without this ===
+      EXPLOITLINK_AUTH_USER: admin
+      EXPLOITLINK_AUTH_PASSWORD: 'your-strong-password'    # CHANGE THIS
+
+      # === Lab-mode toggles (security trade-offs documented above) ===
+      EXPLOITLINK_ALLOW_PRIVATE_TARGETS: "true"
+
+      # === Flask runtime ===
+      # Bridge profile (Windows, ACTIVE): 0.0.0.0 so the Caddy container can
+      #   reach Flask over the internal network. Port 5000 is NOT published,
+      #   so this does not expose Flask to the host — Caddy's :443 remains the
+      #   only reachable surface.
+      # Host profile (Kali): change back to 127.0.0.1 (Caddy reaches Flask via
+      #   shared loopback under host networking).
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: "5000"
+      FLASK_DEBUG: "false"        # Keep false — debug + non-loopback bind is an RCE vector
+
     restart: unless-stopped
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW           # nmap SYN scan, OS detection
+      - NET_ADMIN         # nmap interface enumeration
+      - NET_BIND_SERVICE
+
+  # ── HTTPS reverse proxy ────────────────────────────────────────────
+  # Caddy handles TLS termination. It uses its internal CA to issue a
+  # self-signed cert that's trusted by Caddy's own root CA — see Caddyfile
+  # for the production-domain swap path.
+  caddy:
+    image: caddy:2-alpine
+    container_name: exploitlink-caddy
+
+    # ── NETWORKING PROFILE — must match the exploitlink service above ──
+    # [Kali / Linux] host networking: uncomment the next line AND comment out
+    #   the `ports:` + `environment:` blocks below (the Caddyfile then falls
+    #   back to its default upstream 127.0.0.1:5000).
+    # network_mode: host
+    #
+    # [Windows demo] (ACTIVE) publish Caddy's ports + point it at the Flask
+    #   service by name. Docker's port publishing reaches the Windows host
+    #   reliably (covers both 127.0.0.1 and localhost/IPv6).
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      EXPLOITLINK_UPSTREAM: exploitlink:5000
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data         # persists the local-CA root cert across restarts
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      - exploitlink
+
+# Named volumes for Caddy's local CA + cert state. Without these, Caddy
+# regenerates its root CA on every restart and you'd have to re-trust it
+# in your browser each time.
+volumes:
+  caddy_data:
+  caddy_config:

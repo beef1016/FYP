@@ -1,0 +1,69 @@
+# ExploitLink — HTTPS reverse proxy (chapter 6.4 control TLS-1)
+#
+# This Caddyfile is for the FYP / LAN-deployment profile. It uses Caddy's
+# internal certificate authority to issue a self-signed cert that's trusted
+# by Caddy's own root CA. First time you visit the dashboard the browser
+# will warn — either click through (one time per browser session) or
+# install Caddy's root CA into your browser's trust store (one-time setup,
+# then no warnings ever).
+#
+# For production deployment with a real domain:
+#   Replace the `:443 { ... }` block with:
+#
+#       scanner.yourcompany.com {
+#           reverse_proxy 127.0.0.1:5000
+#           # Caddy obtains and rotates a Let's Encrypt cert automatically
+#           # via the ACME HTTP-01 challenge (needs port 80 open + DNS pointing
+#           # at this server).
+#       }
+#
+# That's the only change needed. `tls internal` becomes implicit and Caddy
+# handles the rest.
+
+# Keep our explicit :80 redirect below instead of Caddy's automatic one
+# (a named site's auto-redirect would bind to loopback only).
+{
+    auto_https disable_redirects
+}
+
+# ─── HTTPS dashboard ───────────────────────────────────────────────────
+# Named site `localhost` so Caddy provisions an internal cert for it at
+# startup. A bare `:443 { tls internal }` block has no managed certificate
+# and fails the TLS handshake (TLSV1_ALERT_INTERNAL_ERROR) on current Caddy,
+# because on-demand internal issuance is now opt-in. `bind 0.0.0.0` keeps it
+# listening on all interfaces so the Docker port-forward still reaches it.
+localhost {
+    bind 0.0.0.0
+    tls internal
+
+    # Upstream Flask process. Defaults to loopback (Kali host-networking
+    # profile); the Windows bridge profile overrides it to the container
+    # service name via the EXPLOITLINK_UPSTREAM env var in docker-compose.yml.
+    reverse_proxy {$EXPLOITLINK_UPSTREAM:127.0.0.1:5000} {
+        # Tell the upstream Flask app it's behind HTTPS so it can set
+        # secure cookies / generate https:// URLs correctly.
+        header_up X-Forwarded-Proto https
+        header_up X-Real-IP {remote_host}
+    }
+
+    # HTTP security headers complementary to the ones Flask-Talisman sets
+    # on responses. Caddy applies these to every request so even error
+    # responses (502, 404 from Caddy itself) carry them.
+    header {
+        # Strict-Transport-Security — 1 hour for FYP lab; bump to 1 year
+        # (max-age=31536000) and add `; includeSubDomains` for production.
+        Strict-Transport-Security "max-age=3600"
+        # Defence-in-depth duplicates of Talisman's headers — Caddy
+        # answers first on errors that bypass Flask
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        # Remove the Server header so Caddy doesn't advertise its version
+        -Server
+    }
+}
+
+# ─── Redirect plain HTTP → HTTPS ───────────────────────────────────────
+:80 {
+    redir https://{host}{uri} 301
+}

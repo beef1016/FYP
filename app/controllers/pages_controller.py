@@ -1,5 +1,7 @@
 from flask import Blueprint, render_template
 
+from app.extensions import auth
+
 # Order is meaningful — the Chart.js dataset slices in this order.
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info"]
 
@@ -22,9 +24,12 @@ class PagesController:
     def __init__(self, db_manager):
         self.db = db_manager
         self.bp = Blueprint("pages", __name__)
-        self.bp.add_url_rule("/", "index", self.index)
-        self.bp.add_url_rule("/dashboard", "dashboard", self.dashboard)
-        self.bp.add_url_rule("/history", "history", self.history)
+        # All pages gated by Basic Auth — chapter 6.4 control AUTH-1
+        self.bp.add_url_rule("/", "index", auth.login_required(self.index))
+        self.bp.add_url_rule("/dashboard", "dashboard",
+                             auth.login_required(self.dashboard))
+        self.bp.add_url_rule("/history", "history",
+                             auth.login_required(self.history))
 
     def register(self, app):
         app.register_blueprint(self.bp)

@@ -23,6 +23,9 @@ instance/
 
 # --- Generated reports ---
 # PDFs / JSON exports the app produces at runtime.
+exploitlink-report-*.pdf
+exploitlink-*.json
+# Keep ignoring the legacy filename pattern in case any old reports remain
 vulnflow-report-*.pdf
 vulnflow-*.json
 

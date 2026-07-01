@@ -28,6 +28,8 @@ instance/
 *.sqlite3
 
 # --- Generated reports (runtime artefacts) ---
+exploitlink-report-*.pdf
+exploitlink-*.json
 vulnflow-report-*.pdf
 vulnflow-*.json
 

@@ -1,4 +1,4 @@
-# VulnFlow Orchestration Engine
+# ExploitLink Orchestration Engine
 
 A web-based automated workflow orchestration engine that chains industry-standard
 open-source security tools — Nmap, WhatWeb, Gobuster, Nuclei — against a target,
@@ -19,6 +19,7 @@ at Multimedia University.
   3. Searchsploit correlates discovered CVEs *and* product/version banners against the local Exploit-DB.
 - **Unified results database** — every finding lands in a single `scan_results` schema regardless of which tool produced it. Severities are normalised (Critical / High / Medium / Low / Info).
 - **Exploit correlation** in two passes: by CVE ID (from Nuclei findings) and by product+version (from Nmap `-sV` banners and WhatWeb fingerprints), so misconfigured ancient services like `Apache 2.2.8` or `vsftpd 2.3.4` light up with public exploits even when no CVE was explicitly named.
+- **Actionable exploit intelligence (offline)** — each correlated exploit carries a one-line **synopsis** read from the exploit file: its language, what it does, and the exact command to run it (`searchsploit -m <id>`). Findings with *no* public exploit aren't dead ends either — an **exploitation-context** line classifies them (reconnaissance, exposure, fingerprint, versioned, …) and explains how they contribute to the attack surface, instead of a bare "N/A". All computed locally; no external lookups.
 - **Tool Management UI** — checks whether each scanner is installed and shows the suggested install/update command. The Flask process never runs `apt-get` itself; you copy the command and run it in your own shell, keeping the web app unprivileged.
 - **Dashboard + History** — severity donut chart per scan, sortable severity column, per-scan PDF + JSON downloads, full scan history with mini severity badges.
 - **Read-only correlator, never an auto-exploiter** — the system tells you *what* exploits exist and *where* the PoC files live on disk. It never runs them.
@@ -86,22 +87,82 @@ docker compose up --build
 First build takes ~5–10 minutes (Kali base image, apt installs, Nuclei template
 download). Subsequent runs use the cached layers and start in seconds.
 
-Once running, open <http://127.0.0.1:5000>.
+Once running, open **<https://localhost/>** (HTTPS via Caddy; plain HTTP
+redirects). Use the hostname `localhost`, **not** `https://127.0.0.1/` —
+connecting by raw IP sends no TLS SNI, so Caddy can't select its certificate
+and the handshake fails with `TLSV1_ALERT_INTERNAL_ERROR`.
 
-### Why host networking
+### Accessing the dashboard over HTTPS
 
-`docker-compose.yml` sets `network_mode: host` so the container shares your
-host's network stack. That's needed for two reasons:
+The compose stack runs **two containers**: ExploitLink (Flask) on loopback,
+and a **Caddy reverse proxy** that terminates TLS on the host's :443 and
+proxies to Flask. The Flask process is never directly reachable from outside
+the host.
 
-1. **LAN targets** — scanning a Metasploitable 2 VM, DVWA box, or any device
-   on the same subnet works exactly as it would from the host. Docker's
-   default bridge would NAT outgoing traffic and break Nmap's service-version
-   probes.
-2. **Internet targets** — scanning hosts like `testfire.net` or
-   `scanme.nmap.org` works with no extra config.
+**First-time browser warning**: Caddy issues the cert from its own local
+certificate authority (the `tls internal` directive in `Caddyfile`). Your
+browser will warn "This connection is not private" the first time you visit.
+Two ways to handle it:
 
-The trade-off: with host networking, the `ports:` directive doesn't apply.
-Flask binds to `127.0.0.1:5000` on the host directly.
+- **Click through**: Advanced → Proceed to localhost (unsafe). Repeat once
+  per browser session. Fine for the FYP demo.
+
+- **Trust Caddy's root CA** (one-time setup, then no warnings forever):
+
+  ```bash
+  # Extract Caddy's root CA cert from the running container
+  docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+  # Linux:  sudo cp caddy-root.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates
+  # Firefox: about:preferences#privacy → Certificates → View Certificates →
+  #          Authorities → Import → select caddy-root.crt → tick "Trust for websites"
+  # Chrome/Edge: Settings → Privacy → Manage certificates → Trusted Root
+  #              Certification Authorities → Import → select caddy-root.crt
+  ```
+
+**Plain HTTP works (sort of)**: <http://localhost> 301-redirects to the
+HTTPS URL automatically.
+
+### Production deployment (real domain)
+
+Replace the `:443 { ... }` block in `Caddyfile` with:
+
+```
+scanner.your-company.com {
+    reverse_proxy 127.0.0.1:5000 {
+        header_up X-Forwarded-Proto https
+    }
+}
+```
+
+Caddy obtains and rotates a Let's Encrypt certificate automatically via the
+ACME HTTP-01 challenge (requires port 80 open + DNS pointing at the server).
+No browser warnings, no manual cert trust step.
+
+### Networking profiles
+
+`docker-compose.yml` ships **two profiles**; pick by host OS.
+
+**Default — bridge + published ports (as shipped; works everywhere, incl.
+Docker Desktop on Windows/macOS).** Caddy publishes `:80`/`:443`, Flask binds
+`0.0.0.0:5000` inside its container, and Caddy reaches it by service name
+(`EXPLOITLINK_UPSTREAM: exploitlink:5000`). Open <https://localhost/>. This is
+the reliable choice on Docker Desktop, whose `network_mode: host` does not
+publish container ports to the Windows/macOS host.
+
+**Kali / native-Linux — host networking (better for LAN scanning).** Uncomment
+`network_mode: host` on **both** services, set `FLASK_HOST: 127.0.0.1`, and the
+Caddyfile upstream falls back to `127.0.0.1:5000`. The container then shares the
+host's stack, so:
+
+1. **LAN targets** — a Metasploitable 2 VM, DVWA box, or any same-subnet device
+   is reachable exactly as from the host, with no bridge NAT to degrade Nmap's
+   service-version probes or Nuclei's UDP/raw-socket templates.
+2. **Internet targets** — `testfire.net`, `scanme.nmap.org`, etc. work with no
+   extra config.
+
+> **Note (Docker Desktop on Windows):** host networking runs inside a WSL2 VM,
+> so it neither publishes ports to Windows nor reaches LAN targets cleanly — use
+> the default bridge profile there. Host networking is for native Linux/Kali.
 
 ### Image refresh
 
@@ -137,7 +198,7 @@ If you'd rather run directly on a Kali host without Docker:
   - `nmap` (for the `-sV` service detection)
   - `whatweb`
   - `nuclei`
-  - `gobuster` (depends on the wordlist `/usr/share/wordlists/dirb/common.txt` — `apt install dirb` provides it)
+  - `gobuster` (depends on the wordlist `/usr/share/dirb/wordlists/common.txt` — `apt install dirb` provides it)
   - `searchsploit` (provided by `exploitdb`)
 
 ### Installation

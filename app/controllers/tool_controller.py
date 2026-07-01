@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
 from app.engine.registry import SCANNER_REGISTRY, TOOL_REGISTRY
+from app.extensions import auth
 
 
 class ToolController:
@@ -8,12 +9,18 @@ class ToolController:
 
     The Flask process never invokes apt-get / nuclei -update-templates itself —
     the UI copies the suggested command for the user to run in their own
-    terminal. See CLAUDE.md for the security rationale.
+    terminal. See ARCHITECTURE.md / chapter 6.4 control TOOL-1.
     """
 
     def __init__(self):
         self.bp = Blueprint("tools", __name__, url_prefix="/api/tools")
-        self.bp.add_url_rule("", "list", self.list_tools, methods=["GET"])
+        # Auth required even on read-only endpoint to avoid leaking the
+        # host's installed-scanner inventory to unauthenticated probes.
+        self.bp.add_url_rule(
+            "", "list",
+            auth.login_required(self.list_tools),
+            methods=["GET"],
+        )
 
     def register(self, app):
         app.register_blueprint(self.bp)

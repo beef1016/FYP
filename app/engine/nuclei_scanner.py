@@ -11,7 +11,7 @@ class NucleiScanner(BaseScanner):
     def get_command(self):
         # -jsonl: structured output, one finding per line
         # -silent: suppress progress banner so only JSONL hits stdout
-        return ["nuclei", "-u", self.target_ip, "-jsonl", "-silent"]
+        return ["nuclei", "-u", self.target_ip, "-jsonl", "-silent", "-timeout", "10", "-retries", "3", "-rl", "75", "-c", "15"]
 
     @classmethod
     def update_command(cls) -> str:

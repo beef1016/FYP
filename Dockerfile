@@ -1,36 +1,38 @@
-# VulnFlow Orchestration Engine — reproducible deployment image
+# ExploitLink Orchestration Engine — reproducible deployment image
 #
 # Built on Kali Rolling so the five scanner CLIs the app shells out to
-# (nmap, whatweb, gobuster, nuclei, searchsploit) are available via apt at
-# pinned versions. The image is intentionally fat (~2.5 GB) because that's
-# the price of including the Exploit-DB mirror + Nuclei templates baked in.
+# (nmap, whatweb, gobuster, nuclei, searchsploit) are available via apt
+# at pinned versions.
 #
-# Use docker-compose for the runtime — it sets host networking (required for
-# LAN target scanning) and the instance/ volume (SQLite DB persistence).
+# Hardening (chapter 6.4 controls):
+#   - Runs as a non-root `exploitlink` user (CONT-1)
+#   - Nuclei + Exploit-DB baked into the image for reproducibility
+#   - apt cache cleaned in the same layer (smaller image, no stale package
+#     metadata if the image is later inspected)
+#
+# Use docker-compose for the runtime — it sets the auth password env var
+# and (optionally) host networking for LAN target scanning.
 
 FROM kalilinux/kali-rolling
 
-LABEL org.opencontainers.image.title="VulnFlow Orchestration Engine"
+LABEL org.opencontainers.image.title="ExploitLink Orchestration Engine"
 LABEL org.opencontainers.image.description="Web-based vulnerability assessment & exploit correlation"
 LABEL org.opencontainers.image.source="https://github.com/beef1016/FYP"
 
-# Quiet apt + sane Python defaults
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     FLASK_APP=run.py
 
-# ---------------------------------------------------------------------------
-# Layer 1 — system packages
-# Python toolchain + the five scanner CLIs + dirb for Gobuster's wordlist.
-# Bundled into one RUN so the apt cache is cleaned in the same layer (smaller image).
-# ---------------------------------------------------------------------------
+# Layer 1 — system packages (Python toolchain + 5 scanner CLIs + dirb)
+# libcap2-bin provides `setcap`, used below to grant nmap raw-socket caps to
+# the non-root user (the Kali base image does not ship it).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git \
         python3 \
         python3-pip \
         python3-venv \
         ca-certificates \
+        libcap2-bin \
         nmap \
         whatweb \
         gobuster \
@@ -39,33 +41,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         dirb \
     && rm -rf /var/lib/apt/lists/*
 
-# ---------------------------------------------------------------------------
-# Layer 2 — Nuclei templates
-# Baked into the image at build time so CVE coverage is reproducible. To
-# refresh after release, rebuild with `docker compose build --no-cache`.
-# ---------------------------------------------------------------------------
-RUN nuclei -update-templates -silent || true
-RUN searchsploit -u
+# Layer 2 — Nuclei templates baked at build time for reproducibility.
+# Templates land at /root/.local/nuclei-templates (Nuclei v3+ default).
+RUN nuclei -update-templates -silent
+
+# Layer 3 — non-root runtime user (chapter 6.4 control CONT-1).
+# Created BEFORE Python deps so the install layer is owned by the right user.
+# Nmap's privileged features (SYN scan, OS detection) need CAP_NET_RAW which
+# we grant via setcap on the binary so the unprivileged user can still use them.
+RUN groupadd --system exploitlink && \
+    useradd  --system --gid exploitlink --create-home --shell /usr/sbin/nologin \
+             --uid 1001 exploitlink && \
+    setcap 'cap_net_raw,cap_net_admin,cap_net_bind_service+eip' /usr/bin/nmap
+
 WORKDIR /app
 
-# ---------------------------------------------------------------------------
-# Layer 3 — Python dependencies
-# Separate COPY for requirements.txt means this layer only invalidates when
-# the deps actually change, not on every source edit.
-#
-# `--break-system-packages`: required on Debian/Kali since PEP 668. We don't
-# need a venv inside the container — the container itself is the isolation.
-# ---------------------------------------------------------------------------
+# Layer 4 — Python deps.
+# Separate from app source so this layer reuses its cache on source edits.
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
-# ---------------------------------------------------------------------------
-# Layer 4 — application source (respects .dockerignore)
-# ---------------------------------------------------------------------------
+# Layer 5 — application source (respects .dockerignore)
 COPY . ./
+
+# Make /app and the instance dir writable by the non-root user
+RUN mkdir -p /app/instance && \
+    chown -R exploitlink:exploitlink /app /home/exploitlink
+
+USER exploitlink
 
 EXPOSE 5000
 
-# Run pending Alembic migrations on every container start (idempotent — a no-op
-# when the DB is already at head), then launch the Flask dev server.
+# Run pending Alembic migrations on every container start (idempotent),
+# then launch the Flask dev server. EXPLOITLINK_AUTH_PASSWORD MUST be set
+# in the container environment (see docker-compose.yml) or run.py exits.
 CMD ["sh", "-c", "flask db upgrade && python3 run.py"]

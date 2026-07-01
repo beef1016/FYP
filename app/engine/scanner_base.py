@@ -10,9 +10,22 @@ We split that into two layers:
   The "parseOutput()" half lives in `app/parsers/` and is dispatched by
   `OrchestrationEngine`, keeping I/O and parsing separable.
 """
+import re
 import subprocess
 import shutil
 from abc import ABC, abstractmethod
+
+# Strips terminal colour/formatting escapes (e.g. nuclei prints "[34mINF[0m").
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# A leading log-level tag like "[INF] " / "[WRN] " that some tools prepend.
+_LOG_TAG_RE = re.compile(r"^\[[A-Z]{2,4}\]\s*")
+# Substrings that mark a line as a CLI error rather than a version string.
+# Tools vary in their version flag (searchsploit has none, old gobuster
+# rejects `version`); we suppress the resulting error instead of showing it.
+_ERROR_HINTS = (
+    "illegal option", "no help topic", "unknown command", "unknown flag",
+    "unknown shorthand", "command not found", "usage:", "invalid option",
+)
 
 
 class ManagedTool:
@@ -24,6 +37,8 @@ class ManagedTool:
     name: str = ""
     cli_name: str = ""
     apt_package: str = ""
+    # argv passed to the CLI to read its version. Set to None for tools that
+    # have no version flag (e.g. searchsploit) so we skip the probe entirely.
     version_args = ["--version"]
 
     @classmethod
@@ -32,18 +47,22 @@ class ManagedTool:
 
     @classmethod
     def installed_version(cls):
-        if not cls.is_installed():
+        if not cls.is_installed() or not cls.version_args:
             return None
         try:
             result = subprocess.run(
                 [cls.cli_name, *cls.version_args],
                 capture_output=True, text=True, timeout=15,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             return None
-        blob = (result.stdout or "") + (result.stderr or "")
-        first = next((ln.strip() for ln in blob.splitlines() if ln.strip()), "")
-        return first or None
+        blob = _ANSI_RE.sub("", (result.stdout or "") + "\n" + (result.stderr or ""))
+        for raw in blob.splitlines():
+            line = raw.strip()
+            if not line or any(h in line.lower() for h in _ERROR_HINTS):
+                continue
+            return _LOG_TAG_RE.sub("", line) or None
+        return None
 
     @classmethod
     def install_command(cls) -> str:

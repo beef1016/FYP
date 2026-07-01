@@ -1,19 +1,37 @@
-"""ScanController (spec section 6 / 12).
+"""ScanController (FYP1 spec §6 / §12).
 
-Routes are now keyed by scan_id (UUID) per spec section 12.
+Routes are keyed by scan_id (UUID) per spec §12.
+
+Security controls applied here (chapter 6.4):
+- HTTP Basic Auth required on every route (`@auth.login_required`)
+- /api/scan/start rate-limited to 10/minute per source IP
+- Target validation rejects shell metacharacters AND
+  RFC1918 / loopback / link-local / multicast / cloud-metadata IPs
+  (unless EXPLOITLINK_ALLOW_PRIVATE_TARGETS is set, for the lab demo)
 """
+import ipaddress
 import re
+import socket
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.engine.registry import SCANNER_REGISTRY
+from app.extensions import auth, limiter
 
 
-# Allowed URL schemes for the URL-input convenience parser. Anything else
-# falls through to the bare-host regex.
+# Allowed URL schemes for the URL-input convenience parser.
 _ALLOWED_SCHEMES = {"http", "https"}
 _DEFAULT_PORT_FOR_SCHEME = {"http": 80, "https": 443}
+
+# Cloud metadata hostnames — block by domain, not just IP, because some
+# resolve to internal CIDRs that aren't caught by the ip_address checks.
+_METADATA_HOSTS = {
+    "metadata.google.internal",
+    "metadata",
+    "instance-data",
+    "instance-data.ec2.internal",
+}
 
 
 class ScanController:
@@ -21,38 +39,82 @@ class ScanController:
         self.orchestrator = orchestrator
         self.db = db_manager
         self.bp = Blueprint("scan", __name__, url_prefix="/api/scan")
-        self.bp.add_url_rule("/start", "start", self.start_scan, methods=["POST"])
-        self.bp.add_url_rule("/<scan_id>/status", "status", self.get_scan_status, methods=["GET"])
-        self.bp.add_url_rule("/<scan_id>/results", "results", self.get_scan_results, methods=["GET"])
+        self.bp.add_url_rule(
+            "/start", "start",
+            limiter.limit("10 per minute")(auth.login_required(self.start_scan)),
+            methods=["POST"],
+        )
+        self.bp.add_url_rule(
+            "/<scan_id>/status", "status",
+            auth.login_required(self.get_scan_status),
+            methods=["GET"],
+        )
+        self.bp.add_url_rule(
+            "/<scan_id>/results", "results",
+            auth.login_required(self.get_scan_results),
+            methods=["GET"],
+        )
 
     def register(self, app):
         app.register_blueprint(self.bp)
 
     # --- helpers ---------------------------------------------------------
     @staticmethod
-    def _is_valid_target(target):
-        """Strict IPv4 or domain. ONLY guard against shell injection — do not relax."""
+    def _is_valid_target_shape(target: str) -> bool:
+        """Layer 1: strict regex for shell-injection prevention."""
         ip_pattern = re.compile(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$")
         domain_pattern = re.compile(
             r"^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
         )
         return bool(ip_pattern.match(target) or domain_pattern.match(target))
 
+    @staticmethod
+    def _is_dangerous_ip(host: str) -> bool:
+        """Layer 2: SSRF guard. Returns True if the host resolves to a
+        private/loopback/link-local/multicast/metadata address that the
+        scanner should NOT touch unless the operator explicitly opts in.
+        """
+        try:
+            ip = ipaddress.ip_address(host)
+            return (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_multicast or ip.is_reserved or ip.is_unspecified)
+        except ValueError:
+            pass
+
+        # Domain — block by name first
+        lower = host.lower()
+        if lower in _METADATA_HOSTS or lower.endswith(".internal"):
+            return True
+
+        # Then attempt resolution and check the resulting IP. Failure to
+        # resolve is NOT treated as dangerous (Nmap will surface the error).
+        try:
+            resolved = socket.gethostbyname(host)
+            ip = ipaddress.ip_address(resolved)
+            return (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_multicast or ip.is_reserved or ip.is_unspecified)
+        except (socket.gaierror, ValueError):
+            return False
+
+    @classmethod
+    def _is_valid_target(cls, target):
+        """Combined validator used by tests + by _parse_target_input."""
+        if not cls._is_valid_target_shape(target):
+            return False
+        if current_app.config.get("EXPLOITLINK_ALLOW_PRIVATE_TARGETS"):
+            return True
+        if cls._is_dangerous_ip(target):
+            return False
+        return True
+
     @classmethod
     def _parse_target_input(cls, raw):
-        """Accept either a bare host (`example.com`, `192.168.1.50`) or a URL
-        (`https://example.com:8443/admin`). Return `(host, port, scheme)` where
-        port and scheme may be None for a bare host.
-
-        Returns (None, None, None) on invalid input — the caller turns that
-        into a 400. The returned `host` is always re-validated through
-        `_is_valid_target` before being trusted in any subprocess argv.
-        """
+        """Accept bare host or http(s):// URL. Returns (host, port, scheme)
+        or (None, None, None) on invalid / dangerous input."""
         raw = (raw or "").strip()
         if not raw:
             return (None, None, None)
 
-        # If it looks URL-shaped, parse it; otherwise treat as bare host.
         if "://" in raw:
             try:
                 parsed = urlparse(raw)
@@ -61,7 +123,7 @@ class ScanController:
             scheme = (parsed.scheme or "").lower()
             if scheme not in _ALLOWED_SCHEMES:
                 return (None, None, None)
-            host = parsed.hostname            # urllib drops user:pass, brackets, port
+            host = parsed.hostname
             port = parsed.port or _DEFAULT_PORT_FOR_SCHEME[scheme]
         else:
             host, port, scheme = raw, None, None
@@ -89,9 +151,12 @@ class ScanController:
 
         host, hint_port, hint_scheme = self._parse_target_input(raw_target)
         if not host:
-            print(f"[SECURITY WARNING] Blocked invalid scan target: {raw_target}")
+            print(f"[SECURITY WARNING] Blocked invalid/dangerous scan target: {raw_target}")
             return jsonify({
-                "error": "Invalid format. Must be an IPv4 address, domain, or http(s):// URL."
+                "error": "Invalid or dangerous target. Must be a public IPv4, "
+                         "domain, or http(s):// URL. Private/loopback/metadata "
+                         "targets are blocked unless EXPLOITLINK_ALLOW_PRIVATE_TARGETS "
+                         "is set."
             }), 400
 
         raw_tools = (
