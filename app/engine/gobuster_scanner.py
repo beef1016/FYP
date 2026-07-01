@@ -1,4 +1,23 @@
+import os
+
 from .scanner_base import BaseScanner
+
+
+# First existing wordlist wins. Portable across the minimal Docker image
+# (the `dirb` apt package installs /usr/share/dirb/wordlists/) and a full Kali
+# install (which also exposes /usr/share/wordlists/dirb/ via the `wordlists`
+# metapackage). Hard-coding either one breaks the other environment.
+_WORDLIST_CANDIDATES = [
+    "/usr/share/dirb/wordlists/common.txt",   # dirb apt package (Docker image + Kali)
+    "/usr/share/wordlists/dirb/common.txt",   # full Kali (wordlists symlink)
+]
+
+
+def _wordlist() -> str:
+    for path in _WORDLIST_CANDIDATES:
+        if os.path.isfile(path):
+            return path
+    return _WORDLIST_CANDIDATES[0]   # sensible fallback if neither is present
 
 
 class GobusterScanner(BaseScanner):
@@ -25,15 +44,11 @@ class GobusterScanner(BaseScanner):
 
     def get_command(self):
         # -q: quiet (suppresses banner so the parser sees only result lines)
-        # Wordlist hard-coded to Kali's dirb common.txt for now — FYP2 could
-        # promote this to a per-scan setting.
-        # Path is the one the `dirb` apt package actually installs. The
-        # reversed `/usr/share/wordlists/dirb/...` only exists on a full Kali
-        # (via the `wordlists` package symlink), NOT in the minimal Docker
-        # image — using it there makes Gobuster find no wordlist → 0 results.
+        # Wordlist is resolved at runtime (see _wordlist) so the same code works
+        # on both the minimal Docker image and a full Kali install.
         return [
             "gobuster", "dir",
             "-u", self._url(),
-            "-w", "/usr/share/wordlists/dirb/common.txt",
+            "-w", _wordlist(),
             "-q",
         ]
