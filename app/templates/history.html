@@ -50,7 +50,7 @@
                 <tbody>
                     {% for row in scan_rows %}
                     {% set scan = row.scan %}
-                    <tr>
+                    <tr class="scan-row" data-scan-id="{{ scan.scan_id }}" style="cursor: pointer;">
                         <td class="scan-id" title="{{ scan.scan_id }}">{{ scan.scan_id[:8] }}…</td>
                         <td class="fw-bold">{{ scan.target }}</td>
                         <td><span class="status-{{ scan.status }}">{{ scan.status }}</span></td>
@@ -107,5 +107,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Click a history row to open that scan on the dashboard (ignore the report buttons).
+    document.querySelectorAll('tr.scan-row').forEach(function (tr) {
+        tr.addEventListener('click', function (e) {
+            if (e.target.closest('a, button')) return;   // let PDF/JSON links work
+            window.location = '/dashboard?scan_id=' + encodeURIComponent(tr.dataset.scanId);
+        });
+    });
+</script>
 </body>
 </html>

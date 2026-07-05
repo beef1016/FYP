@@ -158,7 +158,7 @@ class ReportGenerator:
                     f'color="#0d6efd">{cve_upper}</link>'
                 )
             elif r.product and r.version:
-                bits.append(f"<b>{r.product} {r.version}</b>")
+                bits.append(f"<b>{_esc(r.product)} {_esc(r.version)}</b>")
 
             if r.correlations:
                 bits.append(f"<b>{len(r.correlations)} public exploit(s):</b>")
@@ -188,11 +188,11 @@ class ReportGenerator:
             exploit_cell = "<br/>".join(bits) if bits else "&mdash;"
 
             rows.append([
-                Paragraph(r.tool_name or "", styles["cell"]),
-                Paragraph(r.severity or "Info", styles["cell"]),
-                Paragraph(host_port, styles["cell"]),
-                Paragraph((r.finding or "")[:600], styles["cell"]),
-                Paragraph(exploit_cell, styles["cell"]),
+                Paragraph(_esc(r.tool_name or ""), styles["cell"]),
+                Paragraph(_esc(r.severity or "Info"), styles["cell"]),
+                Paragraph(_esc(host_port), styles["cell"]),
+                Paragraph(_esc((r.finding or "")[:600]), styles["cell"]),
+                Paragraph(exploit_cell, styles["cell"]),   # already escaped + intentional markup
             ])
             sev_color = SEVERITY_COLORS.get(r.severity)
             if sev_color:
@@ -202,6 +202,11 @@ class ReportGenerator:
             rows,
             colWidths=[18*mm, 18*mm, 38*mm, 60*mm, 48*mm],
             repeatRows=1,
+            # A finding can carry up to MAX_HITS_PER_RESULT exploits (each with a
+            # synopsis + path), making a single cell taller than a page. Allow
+            # ReportLab to split such a row across pages instead of raising
+            # LayoutError.
+            splitInRow=1,
         )
 
         style = TableStyle([

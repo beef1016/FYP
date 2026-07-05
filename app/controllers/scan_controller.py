@@ -54,9 +54,20 @@ class ScanController:
             auth.login_required(self.get_scan_results),
             methods=["GET"],
         )
+        self.bp.add_url_rule(
+            "/<scan_id>", "delete",
+            auth.login_required(self.delete_scan),
+            methods=["DELETE"],
+        )
 
     def register(self, app):
         app.register_blueprint(self.bp)
+
+    def delete_scan(self, scan_id):
+        """Delete a scan and its results/correlations (cascade). AUTH-1 protected."""
+        if self.db.delete_scan(scan_id):
+            return jsonify({"deleted": scan_id}), 200
+        return jsonify({"error": "Scan not found"}), 404
 
     # --- helpers ---------------------------------------------------------
     @staticmethod

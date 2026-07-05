@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 
 from app.extensions import auth
 
@@ -38,7 +38,16 @@ class PagesController:
         return render_template("index.html")
 
     def dashboard(self):
-        scans = self.db.all_scans()
+        """Show one scan: a specific one via ?scan_id=..., else the most recent.
+        The full list lives on /history (which links back here per-scan)."""
+        scan_id = request.args.get("scan_id")
+        if scan_id:
+            scan = self.db.get_scan(scan_id)
+            scans = [scan] if scan else []
+        else:
+            latest = self.db.latest_scan()
+            scans = [latest] if latest else []
+
         # Pre-compute per-scan severity counts so the template stays declarative.
         scan_views = [
             {

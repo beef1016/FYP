@@ -35,6 +35,18 @@ class DatabaseManager:
     def get_scan(self, scan_id: str):
         return self.db.session.get(ScanJob, scan_id)
 
+    def latest_scan(self):
+        return ScanJob.query.order_by(ScanJob.start_time.desc()).first()
+
+    def delete_scan(self, scan_id: str) -> bool:
+        """Delete a scan and (via cascade) its ScanResults + ExploitCorrelations."""
+        scan = self.get_scan(scan_id)
+        if not scan:
+            return False
+        self.db.session.delete(scan)   # cascade="all, delete-orphan" cleans up children
+        self.db.session.commit()
+        return True
+
     def latest_scan_for_target(self, target: str):
         return (
             ScanJob.query.filter_by(target=target)
