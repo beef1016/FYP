@@ -33,7 +33,7 @@
 # because on-demand internal issuance is now opt-in. `bind 0.0.0.0` keeps it
 # listening on all interfaces so the Docker port-forward still reaches it.
 localhost {
-    bind 0.0.0.0
+    bind 127.0.0.1
     tls internal
 
     # Upstream Flask process. Defaults to loopback (Kali host-networking
