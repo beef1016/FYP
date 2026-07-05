@@ -203,27 +203,51 @@ If you'd rather run directly on a Kali host without Docker:
 
 ### Installation
 
+**One-time setup:**
+
 ```bash
-# Clone
+# 1. Clone
 git clone https://github.com/beef1016/FYP.git
 cd FYP
 
-# Set up the Python environment
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+# 2. Python environment (name it `venv` or `.venv` — start.sh auto-detects either)
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
 
-# Install the external scanners (Kali pre-installs most of these; this is a safety net)
+# 3. Scanners (Kali pre-installs most) + Caddy for the HTTPS option
 sudo apt update
-sudo apt install -y nmap nuclei whatweb gobuster exploitdb dirb
-
-# Create the database schema via Alembic — never call db.create_all() directly
-FLASK_APP=run.py .venv/bin/flask db upgrade
-
-# Run
-.venv/bin/python run.py
+sudo apt install -y nmap nuclei whatweb gobuster exploitdb dirb caddy libnss3-tools
 ```
 
-The dev server comes up on `http://127.0.0.1:5000`. No root needed.
+Then pick how to run it:
+
+**Option A — plain HTTP (simplest):**
+
+```bash
+source venv/bin/activate
+export FLASK_APP=run.py
+export EXPLOITLINK_AUTH_PASSWORD='your-strong-password'   # REQUIRED — app won't start without it
+export EXPLOITLINK_ALLOW_PRIVATE_TARGETS=true             # allow LAN / Metasploitable targets
+flask db upgrade                                          # create / upgrade the DB schema
+python run.py                                             # http://127.0.0.1:5000
+```
+
+**Option B — HTTPS in one command (Caddy + Flask together):**
+
+```bash
+chmod +x start.sh
+EXPLOITLINK_AUTH_PASSWORD='your-strong-password' ./start.sh   # https://localhost/
+```
+
+`start.sh` runs `flask db upgrade`, then launches **Caddy** (TLS on :443) and
+**Flask** (loopback :5000) together — Ctrl+C stops both. So you do **not** run
+`flask db upgrade` or `run.py` separately with this option. First run installs
+Caddy's local CA; accept the one-time browser cert warning, or import the CA to
+trust it (see *Accessing the dashboard over HTTPS* above).
+
+> `EXPLOITLINK_AUTH_PASSWORD` is mandatory (`run.py` exits without it).
+> `EXPLOITLINK_ALLOW_PRIVATE_TARGETS=true` enables lab mode for Metasploitable /
+> LAN targets — omit it for production-safe mode (RFC1918 targets blocked).
 
 ## Usage
 
