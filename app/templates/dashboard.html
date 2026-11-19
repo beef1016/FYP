@@ -1,188 +1,249 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Results Dashboard - ExploitLink</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f8f9fa; }
-        .severity-Critical { background-color: #dc3545; color: white; }
-        .severity-High { background-color: #fd7e14; color: white; }
-        .severity-Medium { background-color: #ffc107; color: black; }
-        .severity-Low { background-color: #20c997; color: white; }
-        .severity-Info { background-color: #0dcaf0; color: black; }
-        .scan-meta { font-size: 0.8rem; color: #adb5bd; }
-        .status-COMPLETED { color: #75e69b; font-weight: 600; }
-        .status-FAILED    { color: #ff8b8b; font-weight: 600; }
-        .status-RUNNING,
-        .status-PENDING   { color: #7bc8ff; font-weight: 600; }
-        .severity-chart-wrap { width: 220px; max-width: 220px; }
-        .severity-chart-wrap canvas { height: 180px !important; }
-        /* Sortable column headers */
-        th.sortable { cursor: pointer; user-select: none; }
-        th.sortable:hover { background-color: #e9ecef; }
-        th.sortable::after { content: " ⇅"; color: #adb5bd; font-size: 0.85em; }
-        th.sortable[data-direction="desc"]::after { content: " ▼"; color: #0d6efd; }
-        th.sortable[data-direction="asc"]::after  { content: " ▲"; color: #0d6efd; }
-        /* Exploit list: show ALL correlations, scroll if the cell gets tall */
-        .exploit-list { max-height: 260px; overflow-y: auto; margin-top: 4px;
-                        padding-right: 4px; }
-    </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% set active_page = 'dashboard' %}
+{% block title %}Vulnerability Intelligence Dashboard - Workflow Orchestration Engine{% endblock %}
+{% block slogan %}Better tools.<br>Safer tomorrow.{% endblock %}
 
-<div class="container mt-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold text-primary">Vulnerability Intelligence Dashboard</h2>
-        <div class="d-flex gap-2">
-            <a href="/history" class="btn btn-outline-secondary"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px"><path fill-rule="evenodd" d="M5 11.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m-3 1a1 1 0 1 0 0-2 1 1 0 0 0 0 2m0 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2m0 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>Scan History</a>
-            <a href="/" class="btn btn-outline-secondary">← Back to Scanner</a>
+{% block content %}
+<div class="card dash-head">
+    <div class="panel-head">
+        <div class="icon-circle">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5.500v6c0 5 3.400 8.700 8 10.500 4.600-1.800 8-5.500 8-10.500v-6L12 2z"/><path d="M8.800 11.800l2.400 2.400 4.200-4.400" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+            <h2>Vulnerability Intelligence Dashboard</h2>
+            <p>View the results of your scan. Reports can be downloaded from Scan History.</p>
         </div>
     </div>
-
-    {% for view in scan_views %}
-    {% set scan = view.scan %}
-    <div class="card mb-5 shadow-sm">
-        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-0">{{ scan.target }}</h5>
-                <div class="scan-meta">
-                    Scan&nbsp;{{ scan.scan_id[:8] }}
-                    &middot; <span class="status-{{ scan.status }}">{{ scan.status }}</span>
-                    &middot; Modules: {{ scan.selected_modules | join(', ') if scan.selected_modules else '—' }}
-                    &middot; Started: {{ scan.start_time.strftime('%Y-%m-%d %H:%M UTC') if scan.start_time else '—' }}
-                </div>
-            </div>
-            <div class="d-flex gap-2">
-                <a href="/api/scan/{{ scan.scan_id }}/report/pdf"
-                   class="btn btn-sm btn-outline-light"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/></svg>PDF</a>
-                <a href="/api/scan/{{ scan.scan_id }}/report/json"
-                   class="btn btn-sm btn-outline-light"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/></svg>JSON</a>
-                <button type="button" class="btn btn-sm btn-outline-danger delete-scan-btn"
-                        data-scan-id="{{ scan.scan_id }}" title="Delete this scan"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>Delete</button>
-            </div>
-        </div>
-
-        <div class="card-body">
-            {% if scan.results %}
-                <div class="row g-3 mb-3 align-items-center">
-                    <div class="col-md-3">
-                        <div class="severity-chart-wrap">
-                            <canvas
-                                class="severity-donut"
-                                data-counts='{{ view.counts | tojson }}'
-                                data-total="{{ view.total_findings }}"></canvas>
-                        </div>
-                    </div>
-                    <div class="col-md-9">
-                        <div class="d-flex flex-wrap gap-3">
-                            {% for sev in severity_order %}
-                                {% if view.counts[sev] %}
-                                <div>
-                                    <span class="badge severity-{{ sev }}">{{ sev }}</span>
-                                    <span class="fw-bold">{{ view.counts[sev] }}</span>
-                                </div>
-                                {% endif %}
-                            {% endfor %}
-                            <div class="text-muted">
-                                <span class="fw-bold">{{ view.total_findings }}</span> total findings
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <table class="table table-hover align-middle findings-table">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Tool</th>
-                            <th class="sortable" data-sort="severity"
-                                title="Click to sort by severity">Severity</th>
-                            <th>Host : Port</th>
-                            <th>Finding</th>
-                            <th>CVE / Exploit</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in scan.results %}
-                        <tr>
-                            <td><span class="badge bg-secondary">{{ r.tool_name }}</span></td>
-                            <td><span class="badge severity-{{ r.severity }}">{{ r.severity }}</span></td>
-                            <td>
-                                <small>
-                                    {{ r.host }}{% if r.port %}:{{ r.port }}{% endif %}
-                                    {% if r.service %}<br><span class="text-muted">{{ r.service }}</span>{% endif %}
-                                </small>
-                            </td>
-                            <td><small>{{ r.finding }}</small></td>
-                            <td>
-                                {% if r.cve_id %}
-                                    <a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id | upper }}"
-                                       target="_blank" rel="noopener noreferrer"
-                                       class="badge bg-dark text-decoration-none mb-1"
-                                       title="View on NVD">CVE: {{ r.cve_id }}</a><br>
-                                {% elif r.product and r.version %}
-                                    <span class="badge bg-secondary mb-1">{{ r.product }} {{ r.version }}</span><br>
-                                {% endif %}
-                                {% if r.has_public_exploit %}
-                                    <span class="badge bg-danger"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:-1px;margin-right:3px"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.78.091 1.767.98 1.767h13.713c.89 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/></svg>{{ r.correlations | length }} public exploit(s)</span>
-                                    <div class="exploit-list">
-                                    {% for c in r.correlations %}
-                                        <div class="mb-1">
-                                        {% if c.exploit_id %}
-                                            <a href="https://www.exploit-db.com/exploits/{{ c.exploit_id }}"
-                                               target="_blank" rel="noopener noreferrer"
-                                               class="small text-decoration-none"
-                                               title="View on Exploit-DB">
-                                                <small class="text-muted"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:0;margin-right:2px"><path fill-rule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5"/><path fill-rule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0z"/></svg>{{ c.exploit_title }}</small>
-                                            </a>
-                                            <span class="badge bg-light text-dark ms-1" style="font-size: 0.65rem;">EDB-{{ c.exploit_id }}</span>
-                                        {% else %}
-                                            <small class="text-muted">{{ c.exploit_title }}</small>
-                                        {% endif %}
-                                        {% if c.synopsis %}<br><small class="text-info">{{ c.synopsis }}</small>{% endif %}
-                                        {% if c.exploit_path %}<br><small class="text-muted">{{ c.exploit_path }}</small>{% endif %}
-                                        </div>
-                                    {% endfor %}
-                                    </div>
-                                {% else %}
-                                    {% if r.cve_id or (r.product and r.version) %}
-                                        <span class="badge bg-success">No public exploit</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">{{ r.finding_class | capitalize }}</span>
-                                    {% endif %}
-                                    {% if r.exploitation_context %}
-                                        <br><small class="text-muted">{{ r.exploitation_context }}</small>
-                                    {% endif %}
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% else %}
-                <div class="alert alert-success mb-0">No findings recorded for this scan.</div>
-            {% endif %}
-        </div>
+    <div class="dash-actions">
+        <a href="/history" class="btn btn-outline-primary btn-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.500 14"/></svg>
+            Scan History
+        </a>
     </div>
-    {% else %}
-        <div class="alert alert-info text-center">
-            <h4>No scans yet.</h4>
-            <p>Go back to the scanner to start your first scan.</p>
-        </div>
-    {% endfor %}
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% for view in scan_views %}
+{% set scan = view.scan %}
+{% set serious = (view.counts['Critical'] or 0) + (view.counts['High'] or 0) %}
+{% set total = view.total_findings %}
+<section class="scan-block">
+
+    <div class="sum-grid">
+        <div class="sum-card">
+            <div class="icon-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.500" fill="currentColor"/></svg>
+            </div>
+            <div>
+                <div class="lbl">Scan Target</div>
+                <div class="val">{{ scan.target }}</div>
+                <div class="sub">Target address</div>
+            </div>
+        </div>
+        <div class="sum-card">
+            <div class="icon-circle solid blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.700 6.300a1 1 0 0 0 0 1.400l1.600 1.600a1 1 0 0 0 1.400 0l3.770-3.770a6 6 0 0 1-7.940 7.940l-6.910 6.910a2.120 2.120 0 0 1-3-3l6.910-6.910a6 6 0 0 1 7.940-7.940l-3.760 3.760z"/></svg>
+            </div>
+            <div>
+                <div class="lbl">Tools Used</div>
+                {% set used = scan.selected_modules | length if scan.selected_modules else 0 %}
+                <div class="val">{{ used }}</div>
+                <div class="sub">{{ scan.selected_modules | join(', ') if scan.selected_modules else '—' }}</div>
+            </div>
+        </div>
+        <div class="sum-card is-time">
+            <div class="icon-circle yellow solid">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.500 14"/></svg>
+            </div>
+            <div>
+                <div class="lbl">Scan Time</div>
+                <div class="val">
+                    {% if scan.start_time and scan.end_time %}
+                        {% set secs = (scan.end_time - scan.start_time).total_seconds() | int %}
+                        {{ secs // 60 }}m {{ secs % 60 }}s
+                    {% else %}—{% endif %}
+                </div>
+                <div class="sub">({{ scan.status | capitalize }})</div>
+            </div>
+        </div>
+        <div class="sum-card {{ 'is-warn' if serious else ('is-ok' if total == 0 and scan.status == 'COMPLETED' else '') }}">
+            <div class="icon-circle {{ 'soft-red' if serious else ('soft-green' if total == 0 and scan.status == 'COMPLETED' else '') }}">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5.500v6c0 5 3.400 8.700 8 10.500 4.600-1.800 8-5.500 8-10.500v-6L12 2z"/>{% if not serious %}<path d="M8.800 11.800l2.400 2.400 4.200-4.400" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>{% else %}<path d="M12 8v5M12 16v.5" fill="none" stroke="#fff" stroke-width="2.200" stroke-linecap="round"/>{% endif %}</svg>
+            </div>
+            <div>
+                <div class="lbl">Result</div>
+                <div class="val">
+                    {% if scan.status == 'FAILED' %}Scan failed
+                    {% elif scan.status != 'COMPLETED' %}In progress
+                    {% elif total == 0 %}No vulnerabilities found
+                    {% else %}{{ total }} finding{{ 's' if total != 1 }}{% endif %}
+                </div>
+                <div class="sub">
+                    {% if scan.status == 'FAILED' %}Check the target and try again
+                    {% elif scan.status != 'COMPLETED' %}Results will appear when it finishes
+                    {% elif total == 0 %}Your target is secure!
+                    {% elif serious %}{{ serious }} Critical / High to review
+                    {% else %}No Critical or High findings{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="result-panel {{ 'warn' if (serious or scan.status == 'FAILED') else ('info' if (total or scan.status != 'COMPLETED') else '') }}">
+        <div class="result-row">
+            <div class="big-shield">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5.500v6c0 5 3.400 8.700 8 10.500 4.600-1.800 8-5.500 8-10.500v-6L12 2z"/>{% if not serious and scan.status == 'COMPLETED' %}<path d="M8.800 11.800l2.400 2.400 4.200-4.400" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>{% else %}<path d="M12 8v5M12 16v.5" fill="none" stroke="#fff" stroke-width="2.200" stroke-linecap="round"/>{% endif %}</svg>
+            </div>
+            <div class="grow">
+                {% if scan.status == 'FAILED' %}
+                    <h5>Scan failed</h5>
+                    <p>The scan did not finish. Check the target address and that the selected tools are installed, then try again.</p>
+                {% elif scan.status != 'COMPLETED' %}
+                    <h5>Scan in progress</h5>
+                    <p>Results will appear here when the scan has completed. Refresh this page to check.</p>
+                {% elif total == 0 %}
+                    <h5>No vulnerabilities found!</h5>
+                    <p>Your scan completed successfully. No vulnerabilities were detected by the selected tools.</p>
+                {% else %}
+                    <h5>{{ total }} finding{{ 's' if total != 1 }} detected</h5>
+                    <p>{% if serious %}{{ serious }} Critical or High finding{{ 's' if serious != 1 }} should be reviewed first. {% endif %}See the findings table below for details and matching public exploits.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="result-note">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 11v5M12 7.500v.5" stroke="#040E26" stroke-width="2.200" stroke-linecap="round"/></svg>
+            <span><strong>Note:</strong> No findings does not necessarily mean the target is completely secure. To download the PDF or JSON report, open <a href="/history">Scan History</a>.</span>
+        </div>
+    </div>
+
+    {% if scan.results %}
+    <div class="card findings-card">
+        <div class="findings-head">
+            <div>
+                <h5>Findings for {{ scan.target }}</h5>
+                <small>Click the Severity header to change the order.</small>
+            </div>
+        </div>
+        <div class="card-body p-4">
+            <div class="row g-3 mb-4 align-items-center">
+                <div class="col-md-3">
+                    <div class="severity-chart-wrap">
+                        <canvas
+                            class="severity-donut"
+                            data-counts='{{ view.counts | tojson }}'
+                            data-total="{{ view.total_findings }}"></canvas>
+                    </div>
+                </div>
+                <div class="col-md-9">
+                    <div class="d-flex flex-wrap gap-3">
+                        {% for sev in severity_order %}
+                            {% if view.counts[sev] %}
+                            <div class="summary-pill">
+                                <div class="num">{{ view.counts[sev] }}</div>
+                                <span class="badge severity-{{ sev }}">{{ sev }}</span>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                        <div class="summary-pill">
+                            <div class="num">{{ view.total_findings }}</div>
+                            <div class="lbl">total findings</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+            <table class="table table-hover align-middle findings-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tool</th>
+                        <th class="sortable" data-sort="severity"
+                            title="Click to sort by severity">Severity</th>
+                        <th>Host : Port</th>
+                        <th>Finding</th>
+                        <th>CVE / Exploit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in scan.results %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ r.tool_name }}</span></td>
+                        <td><span class="badge severity-{{ r.severity }}">{{ r.severity }}</span></td>
+                        <td>
+                            <small>
+                                {{ r.host }}{% if r.port %}:{{ r.port }}{% endif %}
+                                {% if r.service %}<br><span class="text-muted">{{ r.service }}</span>{% endif %}
+                            </small>
+                        </td>
+                        <td><small>{{ r.finding }}</small></td>
+                        <td>
+                            {% if r.cve_id %}
+                                <a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id | upper }}"
+                                   target="_blank" rel="noopener noreferrer"
+                                   class="badge bg-dark text-decoration-none mb-1"
+                                   title="View on NVD">CVE: {{ r.cve_id }}</a><br>
+                            {% elif r.product and r.version %}
+                                <span class="badge bg-secondary mb-1">{{ r.product }} {{ r.version }}</span><br>
+                            {% endif %}
+                            {% if r.has_public_exploit %}
+                                <span class="badge bg-danger">{{ r.correlations | length }} public exploit(s)</span>
+                                <div class="exploit-list">
+                                {% for c in r.correlations %}
+                                    <div class="mb-1">
+                                    {% if c.exploit_id %}
+                                        <a href="https://www.exploit-db.com/exploits/{{ c.exploit_id }}"
+                                           target="_blank" rel="noopener noreferrer"
+                                           class="small text-decoration-none"
+                                           title="View on Exploit-DB">
+                                            <small>{{ c.exploit_title }}</small>
+                                        </a>
+                                        <span class="badge bg-light text-dark ms-1" style="font-size: 0.65rem;">EDB-{{ c.exploit_id }}</span>
+                                    {% else %}
+                                        <small class="text-muted">{{ c.exploit_title }}</small>
+                                    {% endif %}
+                                    {% if c.synopsis %}<br><small class="text-info">{{ c.synopsis }}</small>{% endif %}
+                                    {% if c.exploit_path %}<br><small class="text-muted">{{ c.exploit_path }}</small>{% endif %}
+                                    </div>
+                                {% endfor %}
+                                </div>
+                            {% else %}
+                                {% if r.cve_id or (r.product and r.version) %}
+                                    <span class="badge bg-success">No public exploit</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ r.finding_class | capitalize }}</span>
+                                {% endif %}
+                                {% if r.exploitation_context %}
+                                    <br><small class="text-muted">{{ r.exploitation_context }}</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</section>
+{% else %}
+    <div class="empty-state">
+        <h4>No scans yet</h4>
+        <p class="text-muted">Run your first scan and the results will appear here.</p>
+        <a href="/" class="btn btn-primary">Start a scan</a>
+    </div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
-    // Severity colours match the badge palette in CSS above.
+    // Severity colours match the badge palette in theme.css.
     const SEVERITY_COLOR = {
-        Critical: '#dc3545',
-        High:     '#fd7e14',
-        Medium:   '#ffc107',
-        Low:      '#20c997',
-        Info:     '#0dcaf0',
+        Critical: '#FF5E4E',
+        High:     '#FF9A8F',
+        Medium:   '#F5C842',
+        Low:      '#3FBF86',
+        Info:     '#2C55BD',
     };
     const SEVERITY_ORDER = {{ severity_order | tojson }};
 
@@ -236,13 +297,14 @@
                 datasets: [{
                     data: present.map(s => counts[s]),
                     backgroundColor: present.map(s => SEVERITY_COLOR[s]),
-                    borderWidth: 1,
+                    borderWidth: 2,
+                    borderColor: '#091A44',
                 }],
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '55%',
+                cutout: '58%',
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}` } },
@@ -251,20 +313,5 @@
         });
     });
 
-    // ---- Per-scan delete -------------------------------------------------
-    document.querySelectorAll('.delete-scan-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const scanId = btn.dataset.scanId;
-            if (!confirm('Delete this scan and all its findings? This cannot be undone.')) return;
-            btn.disabled = true;
-            fetch(`/api/scan/${encodeURIComponent(scanId)}`, { method: 'DELETE' })
-                .then(r => {
-                    if (r.ok) { window.location.href = '/history'; }
-                    else { alert('Failed to delete scan.'); btn.disabled = false; }
-                })
-                .catch(() => { alert('Error contacting the server.'); btn.disabled = false; });
-        });
-    });
 </script>
-</body>
-</html>
+{% endblock %}

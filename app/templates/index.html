@@ -1,121 +1,147 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ExploitLink Orchestration Engine</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f8f9fa; }
-        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        #progress-section { display: none; }
-        .tool-row { padding: 0.75rem 0; border-bottom: 1px solid #eee; }
-        .tool-row:last-child { border-bottom: 0; }
-        .tool-version { font-family: monospace; font-size: 0.8rem; color: #6c757d; }
-        .cmd-block {
-            display: flex; align-items: center; gap: 0.5rem;
-            background: #212529; color: #f8f9fa; padding: 0.4rem 0.6rem;
-            border-radius: 4px; font-family: monospace; font-size: 0.78rem;
-            margin-top: 0.25rem;
-        }
-        .cmd-block code { color: inherit; flex-grow: 1; word-break: break-all; }
-        .cmd-block button {
-            flex-shrink: 0; padding: 0.1rem 0.5rem; font-size: 0.72rem;
-        }
-        .cmd-label { font-size: 0.72rem; color: #6c757d; margin-top: 0.4rem; }
-    </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% set active_page = 'scan' %}
+{% block title %}Scan Configuration - Workflow Orchestration Engine{% endblock %}
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-9">
-
-            <div class="text-center mb-4">
-                <h2 class="fw-bold text-primary">Workflow Orchestration Engine</h2>
-                <p class="text-muted">Automated Vulnerability Assessment &amp; Exploit Correlation</p>
+{% block content %}
+<div class="scan-layout">
+    <!-- SCAN CONFIG -->
+    <div class="card scan-card">
+        <div class="panel-head">
+            <div class="icon-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.500" fill="currentColor"/></svg>
             </div>
+            <div>
+                <h2>New Scan Configuration</h2>
+                <p>Scan your target for vulnerabilities across multiple tools.</p>
+            </div>
+        </div>
 
-            <!-- SCAN CONFIG -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title">New Scan Configuration</h5>
-                    <form id="scan-form">
-                        <div class="mb-3">
-                            <label for="targetIp" class="form-label">Target IP, Domain, or URL</label>
-                            <input type="text" class="form-control" id="targetIp"
-                                   placeholder="e.g., 192.168.1.50, scanme.nmap.org, or https://example.com:8443"
-                                   required>
-                            <small class="text-muted">
-                                URLs are accepted — the host is extracted and the
-                                <code>:port</code> hint is forwarded to WhatWeb/Gobuster.
-                            </small>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Tools to run</label>
-                            <div id="tool-checkbox-row" class="d-flex flex-wrap gap-3">
-                                <em class="text-muted small">Loading tools…</em>
-                            </div>
-                            <small class="text-muted">Searchsploit always runs after scanners (if installed) to correlate CVEs.</small>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100 fw-bold">Initiate Scan Job</button>
-                    </form>
+        <div id="form-error" class="inline-error" role="alert"></div>
+        <form id="scan-form" class="scan-inner">
+            <div class="grp">
+                <label for="targetIp" class="field-label">Target IP / Domain / URL</label>
+                <div class="input-wrap">
+                    <input type="text" class="form-control" id="targetIp"
+                           placeholder="e.g., 192.168.1.50, scanme.nmap.org, or https://example.com:8443"
+                           autocomplete="off" required>
+                    <button type="button" class="input-copy" id="copy-target" title="Copy target" aria-label="Copy target">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+                    </button>
                 </div>
+                <div class="hint">URLs are accepted — the host is extracted and the port hint is forwarded to WhatWeb/Gobuster.</div>
             </div>
 
-            <!-- PROGRESS -->
-            <div class="card mb-4" id="progress-section">
-                <div class="card-body">
-                    <h5 class="card-title">Live Scan Status:
-                        <span id="status-text" class="text-info">Initializing...</span>
-                    </h5>
-                    <div class="progress mt-3" style="height: 25px;">
-                        <div id="scan-progress-bar"
-                             class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                             role="progressbar" style="width: 0%;">0%</div>
-                    </div>
-                </div>
+            <div class="grp">
+                <span class="field-label">Tools to run</span>
+                <div id="tool-checkbox-row"><em class="text-muted small">Loading tools…</em></div>
+                <div class="hint">Select one or more tools to run. Searchsploit always runs last to match findings with public exploits.</div>
             </div>
 
-            <!-- TOOL MANAGEMENT -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h5 class="card-title mb-0">Tool Management</h5>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-tools">
-                            Refresh all
-                        </button>
-                    </div>
-                    <p class="text-muted small mb-2">
-                        Each tool shows the suggested shell command. Copy it and run it in your Kali terminal — this avoids handing the web app root.
-                    </p>
-                    <div id="tools-list"><em class="text-muted small">Loading tools…</em></div>
-                </div>
-            </div>
+            <button type="submit" id="submit-btn" class="btn btn-cta">
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3.500 20 12 6 20.500"/></svg>
+                <span id="submit-label">Initiate Scan Job</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+            </button>
+            <div class="legal">Only scan systems you own or have written permission to test. Unauthorised scanning may be illegal.</div>
+        </form>
+    </div>
 
-            <div class="text-center mb-5">
-                <a href="/dashboard" class="btn btn-outline-primary">Go to Results Dashboard →</a>
-            </div>
+    <!-- HOW IT WORKS -->
+    <div class="how-card">
+        <h5>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21.500h4"/><path d="M12 2.500a6.500 6.500 0 0 0-3.700 11.900c.6.500 1 1.200 1 2.100h5.400c0-.9.400-1.600 1-2.100A6.500 6.500 0 0 0 12 2.500z"/><path d="M12 0.200v0" /></svg>
+            How it works?
+        </h5>
+        <div class="how-step"><span class="how-num">1</span> Enter target (IP / Domain / URL)</div>
+        <div class="how-step"><span class="how-num">2</span> Select the tools you want to run</div>
+        <div class="how-step"><span class="how-num">3</span> Click "Initiate Scan Job"</div>
+        <div class="how-step"><span class="how-num">4</span> View the results in the dashboard</div>
+        <div class="how-sign">Easy 4 steps,<br>You're all set!
+            <svg viewBox="0 0 24 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 24c6-1 14-7 16-19"/><path d="M13 7l6-3 1 7"/></svg>
         </div>
     </div>
 </div>
 
+<!-- LIVE STATUS -->
+<div class="card status-card" aria-live="polite">
+    <svg id="status-spin" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.200-6.900"/><polyline points="21 3 21 8 16 8"/></svg>
+    <span class="status-label">Live Scan Status:</span>
+    <span id="status-pill" class="status-pill">READY</span>
+    <span id="status-msg" class="status-msg">Waiting for scan to start...</span>
+    <div class="status-bar">
+        <div class="progress">
+            <div id="scan-progress-bar" class="progress-bar bg-primary" role="progressbar" style="width: 0%;"></div>
+        </div>
+        <span id="pct" class="pct">0%</span>
+    </div>
+</div>
+
+<!-- TOOL MANAGEMENT -->
+<div class="card tools-card">
+    <div class="tools-head">
+        <div class="left">
+            <svg class="wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.700 6.300a1 1 0 0 0 0 1.400l1.600 1.600a1 1 0 0 0 1.400 0l3.770-3.770a6 6 0 0 1-7.940 7.940l-6.910 6.910a2.120 2.120 0 0 1-3-3l6.910-6.910a6 6 0 0 1 7.940-7.940l-3.760 3.760z"/></svg>
+            <div>
+                <h5>Tool Management</h5>
+                <p>Each tool has a specific purpose. Click View Command for the install or update command and copy it into your own terminal — the web app never runs installs itself.</p>
+            </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary btn-ico" id="refresh-tools">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.200-6.900"/><polyline points="21 3 21 8 16 8"/></svg>
+            Refresh all
+        </button>
+    </div>
+    <div id="tools-list" class="tool-grid"><em class="text-muted small">Loading tools…</em></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
 const toolsList = document.getElementById('tools-list');
 const toolCheckboxRow = document.getElementById('tool-checkbox-row');
+const formError = document.getElementById('form-error');
 
-function badge(installed) {
-    return installed
-        ? '<span class="badge bg-success">installed</span>'
-        : '<span class="badge bg-secondary">not installed</span>';
+const ICONS = {
+    nmap: '<path d="M1.500 12S5.500 5 12 5s10.500 7 10.500 7-4 7-10.500 7S1.500 12 1.500 12z"/><circle cx="12" cy="12" r="3"/>',
+    whatweb: '<circle cx="12" cy="12" r="9.500"/><line x1="2.500" y1="12" x2="21.500" y2="12"/><path d="M12 2.500a14.500 14.500 0 0 1 3.800 9.500A14.500 14.500 0 0 1 12 21.500 14.500 14.500 0 0 1 8.200 12 14.500 14.500 0 0 1 12 2.500z"/>',
+    nuclei: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.500" fill="currentColor"/>',
+    gobuster: '<path d="M21.500 18.500a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h4.500l2 2.500h8.500a2 2 0 0 1 2 2z"/>',
+    searchsploit: '<circle cx="10.500" cy="10.500" r="6.500"/><line x1="20" y1="20" x2="15.300" y2="15.300"/>',
+};
+const ICON_DEFAULT = '<path d="M14.700 6.300a1 1 0 0 0 0 1.400l1.600 1.600a1 1 0 0 0 1.400 0l3.770-3.770a6 6 0 0 1-7.940 7.940l-6.910 6.910a2.120 2.120 0 0 1-3-3l6.910-6.910a6 6 0 0 1 7.940-7.940l-3.760 3.760z"/>';
+const ICON_COLOR = { nmap: 'green', whatweb: 'purple', nuclei: 'red', gobuster: 'yellow', searchsploit: 'blue' };
+const TOOL_LABEL = { nmap: 'Nmap', whatweb: 'WhatWeb', nuclei: 'Nuclei', gobuster: 'Gobuster', searchsploit: 'SearchSploit' };
+const TOOL_DESC = {
+    nmap: 'Discovers open ports, services and hosts on a network.',
+    whatweb: 'Identifies technologies used by a website.',
+    nuclei: 'Checks for known vulnerabilities using templates.',
+    gobuster: 'Discovers hidden directories and resources.',
+    searchsploit: 'Searches known exploit references.',
+};
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
 }
+
+function showError(msg) {
+    formError.textContent = msg;
+    formError.style.display = 'block';
+    formError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function clearError() { formError.style.display = 'none'; }
 
 async function loadTools() {
     toolsList.innerHTML = '<em class="text-muted small">Loading tools…</em>';
-    const res = await fetch('/api/tools');
-    const data = await res.json();
-    renderTools(data.tools);
-    renderToolCheckboxes(data.tools);
+    try {
+        const res = await fetch('/api/tools');
+        const data = await res.json();
+        renderTools(data.tools);
+        renderToolCheckboxes(data.tools);
+    } catch (err) {
+        toolsList.innerHTML = '<em class="text-danger small">Could not load the tool list. Please refresh the page.</em>';
+    }
 }
 
 function renderToolCheckboxes(tools) {
@@ -132,42 +158,41 @@ function renderToolCheckboxes(tools) {
     `).join('');
 }
 
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-    }[c]));
+function shortVersion(v) {
+    if (!v) return '';
+    return String(v).split('\n')[0].trim().slice(0, 60);
 }
 
 function renderTools(tools) {
     toolsList.innerHTML = tools.map(t => {
-        const showInstall = !t.installed;
-        const showUpdate = t.installed;
+        const key = t.name.toLowerCase();
+        const label = TOOL_LABEL[key] || t.name;
+        const cmd = t.installed ? t.update_command : t.install_command;
+        const cmdLabel = t.installed ? 'Update command' : 'Install command';
+        const ver = shortVersion(t.version);
         return `
-        <div class="tool-row" data-tool="${t.name}">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <div class="d-flex align-items-center gap-2">
-                        <strong>${t.name}</strong>
-                        ${badge(t.installed)}
-                        <span class="text-muted small">(apt: ${t.apt_package})</span>
+        <div class="tool-card" data-tool="${escapeHtml(t.name)}">
+            <div class="tool-top">
+                <div class="icon-circle solid ${ICON_COLOR[key] || 'blue'}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[key] || ICON_DEFAULT}</svg>
+                </div>
+                <div style="min-width:0">
+                    <div class="tool-name">${escapeHtml(label)}
+                        ${t.installed ? '<span class="badge bg-success">Installed</span>' : '<span class="badge badge-off">Not installed</span>'}
                     </div>
-                    <div class="tool-version">${t.version ? escapeHtml(t.version) : '—'}</div>
+                    <div class="tool-ver" title="${escapeHtml(ver)}">${ver ? escapeHtml(ver) : 'apt: ' + escapeHtml(t.apt_package)}</div>
                 </div>
             </div>
-            ${showInstall ? `
-                <div class="cmd-label">Install:</div>
-                <div class="cmd-block">
-                    <code>${escapeHtml(t.install_command)}</code>
-                    <button class="btn btn-sm btn-light copy-btn" data-cmd="${escapeHtml(t.install_command)}">Copy</button>
-                </div>` : ''}
-            ${showUpdate ? `
-                <div class="cmd-label">Update:</div>
-                <div class="cmd-block">
-                    <code>${escapeHtml(t.update_command)}</code>
-                    <button class="btn btn-sm btn-light copy-btn" data-cmd="${escapeHtml(t.update_command)}">Copy</button>
-                </div>` : ''}
-        </div>
-    `;
+            <div class="tool-desc">${TOOL_DESC[key] || ''}</div>
+            <div class="cmd-block">
+                <div class="cmd-label">${cmdLabel}</div>
+                <code>${escapeHtml(cmd)}</code>
+            </div>
+            <div class="tool-actions">
+                <button type="button" class="btn btn-outline-primary detail-btn">View Command</button>
+                <button type="button" class="btn btn-soft copy-btn" data-cmd="${escapeHtml(cmd)}">Copy</button>
+            </div>
+        </div>`;
     }).join('');
 }
 
@@ -178,10 +203,11 @@ async function copyToClipboard(text, btn) {
         btn.textContent = 'Copied!';
         setTimeout(() => { btn.textContent = orig; }, 1200);
     } catch {
-        // Fallback for non-secure contexts: select the sibling <code> for manual copy
-        const codeEl = btn.parentElement.querySelector('code');
+        // Fallback for non-secure contexts: open the command so it can be selected by hand
+        const block = btn.closest('.tool-card').querySelector('.cmd-block');
+        block.classList.add('open');
         const range = document.createRange();
-        range.selectNodeContents(codeEl);
+        range.selectNodeContents(block.querySelector('code'));
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
@@ -190,30 +216,143 @@ async function copyToClipboard(text, btn) {
 }
 
 toolsList.addEventListener('click', (e) => {
-    const btn = e.target.closest('button.copy-btn');
-    if (!btn) return;
-    copyToClipboard(btn.dataset.cmd, btn);
+    const copyBtn = e.target.closest('button.copy-btn');
+    if (copyBtn) { copyToClipboard(copyBtn.dataset.cmd, copyBtn); return; }
+    const detailBtn = e.target.closest('button.detail-btn');
+    if (detailBtn) {
+        const block = detailBtn.closest('.tool-card').querySelector('.cmd-block');
+        const open = block.classList.toggle('open');
+        detailBtn.textContent = open ? 'Hide Command' : 'View Command';
+    }
 });
 
 document.getElementById('refresh-tools').addEventListener('click', loadTools);
 
+document.getElementById('copy-target').addEventListener('click', async () => {
+    const v = document.getElementById('targetIp').value;
+    if (!v) return;
+    try { await navigator.clipboard.writeText(v); } catch { /* clipboard unavailable */ }
+});
+
+// ---- Live status helpers ----
+const progressBar = document.getElementById('scan-progress-bar');
+const statusPill = document.getElementById('status-pill');
+const statusMsg = document.getElementById('status-msg');
+const statusSpin = document.getElementById('status-spin');
+const pctEl = document.getElementById('pct');
+const submitBtn = document.getElementById('submit-btn');
+const submitLabel = document.getElementById('submit-label');
+
+function setStatus(text, kind, message) {
+    statusPill.textContent = text;
+    statusPill.className = 'status-pill' + (kind ? ' ' + kind : '');
+    statusSpin.classList.toggle('running', kind === 'running');
+    if (message !== undefined) statusMsg.textContent = message;
+}
+
+function updateBar(percentage, colorClass) {
+    progressBar.style.width = percentage + '%';
+    pctEl.textContent = percentage + '%';
+    progressBar.className = `progress-bar ${colorClass}`;
+}
+
+function lockForm() {
+    submitBtn.disabled = true;
+    submitLabel.textContent = 'Scan running…';
+}
+function resetForm() {
+    submitBtn.disabled = false;
+    submitLabel.textContent = 'Initiate Scan Job';
+}
+function resetStatus() {
+    setStatus('READY', '', 'Waiting for scan to start...');
+    updateBar(0, 'bg-primary');
+}
+
+// The running scan's id is remembered in this browser so that leaving this page
+// and coming back keeps showing the live status (running) or the result (finished).
+const ACTIVE_KEY = 'scan.active';
+function setActiveScan(id) {
+    try { id ? localStorage.setItem(ACTIVE_KEY, id) : localStorage.removeItem(ACTIVE_KEY); } catch (e) { /* storage unavailable */ }
+}
+function getActiveScan() {
+    try { return localStorage.getItem(ACTIVE_KEY); } catch (e) { return null; }
+}
+
+let pollTimer = null;
+
+// Poll one scan until it finishes. redirectWhenDone is true only for a scan started
+// on this page view; when the page is reopened later we show the result with a link.
+function trackScan(scanId, redirectWhenDone) {
+    clearInterval(pollTimer);
+
+    function finish() {
+        clearInterval(pollTimer);
+        setActiveScan(null);
+    }
+
+    function tick() {
+        fetch(`/api/scan/${encodeURIComponent(scanId)}/status`)
+            .then(r => r.ok ? r.json() : (r.status === 404 ? null : undefined))
+            .then(statusData => {
+                if (statusData === undefined) return;          // temporary error: keep polling
+                if (statusData === null) {                     // scan no longer exists
+                    finish(); resetStatus(); resetForm(); return;
+                }
+                const s = statusData.current_status;
+                const tool = statusData.current_tool;
+                let pct = 5;
+                if (statusData.total && statusData.step != null) {
+                    pct = Math.min(95, Math.round((statusData.step / statusData.total) * 100));
+                }
+
+                if (s === "COMPLETED") {
+                    finish();
+                    updateBar(100, 'bg-success');
+                    resetForm();
+                    if (redirectWhenDone) {
+                        setStatus('COMPLETED', 'done', 'Completed! Opening your results…');
+                        setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+                    } else {
+                        setStatus('COMPLETED', 'done', 'Scan finished. ');
+                        const a = document.createElement('a');
+                        a.href = '/dashboard?scan_id=' + encodeURIComponent(scanId);
+                        a.textContent = 'View results →';
+                        statusMsg.appendChild(a);
+                    }
+                } else if (s === "FAILED") {
+                    finish();
+                    updateBar(100, 'bg-danger');
+                    setStatus('FAILED', 'failed', 'Scan failed. Check the target and try again.');
+                    resetForm();
+                } else {
+                    lockForm();
+                    setStatus(s, 'running', tool ? `Running ${tool}…` : 'Working…');
+                    updateBar(pct, tool === "searchsploit" ? 'bg-warning' : 'bg-info');
+                }
+            })
+            .catch(() => { /* network hiccup: try again on the next tick */ });
+    }
+
+    tick();
+    pollTimer = setInterval(tick, 2000);
+}
+
 // ---- Scan submission ----
 document.getElementById('scan-form').addEventListener('submit', function(e) {
     e.preventDefault();
+    clearError();
 
     const targetIp = document.getElementById('targetIp').value.trim();
     const tools = [...document.querySelectorAll('.tool-cb:checked')].map(cb => cb.value);
     if (tools.length === 0) {
-        alert('Pick at least one scanner.');
+        showError('Please tick at least one scanner before starting.');
         return;
     }
 
-    const progressSection = document.getElementById('progress-section');
-    const progressBar = document.getElementById('scan-progress-bar');
-    const statusText = document.getElementById('status-text');
-    progressSection.style.display = 'block';
+    lockForm();
+    setStatus('STARTING', 'running', 'Connecting to the engine…');
     updateBar(2, 'bg-primary');
-    statusText.innerText = 'Connecting to Engine...';
 
     const params = new URLSearchParams();
     params.set('target', targetIp);
@@ -223,55 +362,30 @@ document.getElementById('scan-form').addEventListener('submit', function(e) {
         .then(r => r.json().then(data => ({ ok: r.ok, status: r.status, data })))
         .then(({ ok, data }) => {
             if (!ok) {
-                alert(data.error || 'Failed to start scan.');
-                progressSection.style.display = 'none';
+                showError(data.error || 'Failed to start the scan.');
+                resetStatus();
+                resetForm();
                 return;
             }
-            const scanId = data.scan_id;
-            const pollingInterval = setInterval(() => {
-                fetch(`/api/scan/${encodeURIComponent(scanId)}/status`)
-                    .then(r => r.json())
-                    .then(statusData => {
-                        const s = statusData.current_status;
-                        const tool = statusData.current_tool;
-                        const label = tool ? `${s} — ${tool}` : s;
-                        statusText.innerText = label;
-
-                        let pct = 5;
-                        if (statusData.total && statusData.step != null) {
-                            pct = Math.min(95, Math.round((statusData.step / statusData.total) * 100));
-                        }
-
-                        if (s === "COMPLETED") {
-                            updateBar(100, 'bg-success');
-                            statusText.className = "text-success fw-bold";
-                            statusText.innerText = "Completed! Redirecting to dashboard...";
-                            clearInterval(pollingInterval);
-                            setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
-                        } else if (s === "FAILED") {
-                            updateBar(100, 'bg-danger');
-                            statusText.className = "text-danger fw-bold";
-                            clearInterval(pollingInterval);
-                        } else {
-                            updateBar(pct, tool === "searchsploit" ? 'bg-warning' : 'bg-info');
-                        }
-                    });
-            }, 2000);
+            setActiveScan(data.scan_id);
+            trackScan(data.scan_id, true);
         })
         .catch(err => {
-            alert("Error connecting to backend.");
+            showError('Could not reach the server. Please check it is running and try again.');
+            resetStatus();
+            resetForm();
             console.error(err);
         });
-
-    function updateBar(percentage, colorClass) {
-        progressBar.style.width = percentage + '%';
-        progressBar.innerText = percentage + '%';
-        progressBar.className = `progress-bar progress-bar-striped progress-bar-animated ${colorClass}`;
-        if (percentage === 100) progressBar.classList.remove('progress-bar-animated');
-    }
 });
+
+// Reopened the page while a scan was running (or has just finished): pick it back up.
+const resumeId = getActiveScan();
+if (resumeId) {
+    lockForm();
+    setStatus('RESUMING', 'running', 'Checking your scan…');
+    trackScan(resumeId, false);
+}
 
 loadTools();
 </script>
-</body>
-</html>
+{% endblock %}
