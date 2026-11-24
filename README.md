@@ -1,9 +1,13 @@
 # ExploitLink Orchestration Engine
 
 A web-based automated workflow orchestration engine that chains industry-standard
-open-source security tools — Nmap, WhatWeb, Gobuster, Nuclei — against a target,
-parses their disparate outputs into a unified database, then correlates discovered
-CVEs and service banners against Exploit-DB via Searchsploit.
+open-source security tools — Nmap, WhatWeb, Gobuster, Nuclei, and OWASP ZAP —
+against a target, parses their disparate outputs into a unified database, then
+correlates discovered CVEs and service banners against Exploit-DB (via Searchsploit)
+and the CISA **Known Exploited Vulnerabilities** catalog. Overlapping findings from
+different tools are de-duplicated and linked rather than double-counted, and results
+are ranked by real-world exploitability — actively-exploited-and-confirmed first —
+not by a severity label alone.
 
 Final Year Project for the Bachelor of Computer Science (Hons)(Cybersecurity)
 at Multimedia University.
@@ -15,13 +19,17 @@ at Multimedia University.
 - **Single web form** — point it at an IPv4, a domain, or an `http(s)://host:port/path` URL and select which scanners to run.
 - **Three-phase orchestration pipeline**:
   1. Nmap discovery scan with service-version detection (`-sV`) runs first.
-  2. WhatWeb, Nuclei, and Gobuster fan out concurrently across the HTTP/HTTPS ports Nmap discovered.
-  3. Searchsploit correlates discovered CVEs *and* product/version banners against the local Exploit-DB.
+  2. WhatWeb, Nuclei, Gobuster, and OWASP ZAP fan out concurrently across the HTTP/HTTPS ports Nmap discovered.
+  3. Findings are enriched in passes: cross-tool de-duplication → Exploit-DB lookup by CVE → Exploit-DB lookup by product/version → CISA KEV.
 - **Unified results database** — every finding lands in a single `scan_results` schema regardless of which tool produced it. Severities are normalised (Critical / High / Medium / Low / Info).
-- **Exploit correlation** in two passes: by CVE ID (from Nuclei findings) and by product+version (from Nmap `-sV` banners and WhatWeb fingerprints), so misconfigured ancient services like `Apache 2.2.8` or `vsftpd 2.3.4` light up with public exploits even when no CVE was explicitly named.
-- **Actionable exploit intelligence (offline)** — each correlated exploit carries a one-line **synopsis** read from the exploit file: its language, what it does, and the exact command to run it (`searchsploit -m <id>`). Findings with *no* public exploit aren't dead ends either — an **exploitation-context** line classifies them (reconnaissance, exposure, fingerprint, versioned, …) and explains how they contribute to the attack surface, instead of a bare "N/A". All computed locally; no external lookups.
-- **Tool Management UI** — checks whether each scanner is installed and shows the suggested install/update command. The Flask process never runs `apt-get` itself; you copy the command and run it in your own shell, keeping the web app unprivileged.
-- **Dashboard + History** — severity donut chart per scan, sortable severity column, per-scan PDF + JSON downloads, full scan history with mini severity badges.
+- **Exploit correlation** — by CVE ID (from Nuclei/ZAP) and by product+version (from Nmap `-sV` banners and WhatWeb fingerprints), so misconfigured ancient services like `Apache 2.2.8` or `vsftpd 2.3.4` light up with public exploits even when no CVE was explicitly named. The product query is normalised identically for every tool and unioned across a dup-group, so two tools describing one service never show contradictory exploit lists.
+- **CISA KEV enrichment (offline)** — CVE-tagged findings are flagged when they appear in a local mirror of CISA's **Known Exploited Vulnerabilities** catalog (i.e. exploited in the wild right now), independent of whether a PoC exists. The running app only ever *reads* the local mirror; refresh it on the host with `scripts/update_kev.sh` (or `scripts/update_kev.ps1`). Nothing is fetched at scan time.
+- **Cross-tool de-duplication (keep-both-and-link)** — overlapping findings are linked, never deleted, and the two *kinds* of overlap are kept separate: **identity** (a shared CVE or service banner → "also detected by …", genuine corroboration) vs **co-location** (different tools touched the same URL path → "same path also mapped by …", *not* the same issue). A shared path can therefore never masquerade as corroboration.
+- **Evidence-aware, tiered prioritisation** — findings are ordered by real-world exploitability, in three tiers: **(1)** listed in CISA KEV *and* confirmed on the target, **(2)** a public exploit targets the finding's specific CVE, then **(3)** severity. Within a tier, **confirmed** findings outrank **presumed** (version-inferred) ones, then CVSS, then EPSS. A banner-only exploit match (same software, possibly a different flaw) does *not* elevate a finding, and a KEV listing that is only presumed keeps its flag but drops out of the top tier — because KEV means "exploited somewhere", not "this host is vulnerable". Severity itself stays a qualitative, tool-reported label (not CVSS-derived).
+- **Honest finding counts** — the dashboard and reports show three numbers instead of one: *reported* (raw tool hits), *collapsed* (after merging repeated template hits within a tool, e.g. `http-missing-security-headers` ×10 → 1), and *unique* (after also merging cross-tool identity duplicates).
+- **Actionable exploit intelligence (offline)** — each correlated exploit carries a one-line **synopsis** read from the exploit file: its language, what it does, and the exact command to run it (`searchsploit -m <id>`). Findings with *no* public exploit aren't dead ends either — an **exploitation-context** line classifies them (reconnaissance, exposure, fingerprint, versioned, misconfiguration, …) and explains how they contribute to the attack surface, instead of a bare "N/A". All computed locally; no external lookups.
+- **Tool Management UI** — checks whether each scanner (and the Searchsploit / CISA-KEV data sources) is installed/present and shows the suggested install/update command. The Flask process never runs `apt-get` itself; you copy the command and run it in your own shell, keeping the web app unprivileged.
+- **Dashboard + History** — severity donut chart per scan, sortable severity column, confirmed/presumed and corroboration badges, per-scan PDF + JSON downloads, full scan history with mini severity badges. Guessed credentials captured by weak-/default-login templates are **masked** (`admin:****`) in the shareable PDF/JSON exports; the raw value stays only in the local database.
 - **Read-only correlator, never an auto-exploiter** — the system tells you *what* exploits exist and *where* the PoC files live on disk. It never runs them.
 
 ## Demo
@@ -49,13 +57,19 @@ ReportController      → /api/scan/<id>/report/{pdf,json}
 OrchestrationEngine   → 3-phase pipeline, ThreadPoolExecutor for phase 2
         |
         v
-BaseScanner(ABC)      → NmapScanner, WhatWebScanner, NucleiScanner, GobusterScanner
+BaseScanner(ABC)      → NmapScanner, WhatWebScanner, NucleiScanner,
+                        GobusterScanner, ZapScanner
         |
         v
 PARSERS dispatch      → one parser per tool, all write ScanResult rows
         |
         v
-ExploitCorrelator     → CVE pass + product/version pass via SearchsploitAdapter
+ExploitCorrelator     → (1) de-dup via finding_dedup  (2) CVE pass
+                        (3) product/version pass via SearchsploitAdapter
+                        (4) CISA KEV pass via KevCatalog
+        |
+        v
+priority_key          → evidence-aware 3-tier ranking on each ScanResult
 ```
 
 Adding a new scanner is a ~10-minute drop-in: subclass `BaseScanner`, implement
@@ -67,10 +81,21 @@ implements, see [FYP_PROJECT_SPEC.md](FYP_PROJECT_SPEC.md).
 
 ## Run with Docker (recommended)
 
-The repo ships a `Dockerfile` + `docker-compose.yml` so the full stack — Python
-runtime, all five scanner CLIs, the Exploit-DB mirror, and the Nuclei templates
-— is reproducible from a clean machine. No need to install anything on the host
-beyond Docker itself.
+The repo ships a `Dockerfile` + `docker-compose.yml` so the core stack — Python
+runtime, the Nmap / WhatWeb / Gobuster / Nuclei CLIs, Searchsploit + the Exploit-DB
+mirror, and the Nuclei templates — is reproducible from a clean machine. No need to
+install anything on the host beyond Docker itself.
+
+Two things are **not** baked into the image, by design:
+
+- **OWASP ZAP** — it is large (a full Java app), so it is left out of the image to
+  keep builds lean. On the Dockerized stack the ZAP scanner simply reports as "not
+  installed" and is skipped; run ZAP on a native Kali host (below) to use it.
+- **The CISA KEV mirror** — it is runtime data, not image content. `docker-compose.yml`
+  mounts `./app/data/kev` into the container, and you populate/refresh it on the host
+  with `scripts/update_kev.sh` (or `.ps1`); the container reads it live, so a KEV
+  refresh needs no rebuild. Without it, scans still run — findings just aren't
+  KEV-flagged.
 
 ### Prerequisites
 
@@ -174,6 +199,13 @@ docker compose build --no-cache
 docker compose up
 ```
 
+The **CISA KEV** mirror is the exception — it is host-side mounted data, so refresh
+it without any rebuild:
+
+```bash
+./scripts/update_kev.sh        # or scripts\update_kev.ps1 on Windows
+```
+
 ### Stopping
 
 ```bash
@@ -199,7 +231,10 @@ If you'd rather run directly on a Kali host without Docker:
   - `whatweb`
   - `nuclei`
   - `gobuster` (depends on the wordlist `/usr/share/dirb/wordlists/common.txt` — `apt install dirb` provides it)
+  - `zaproxy` (OWASP ZAP; provides the ZAP DAST scanner — optional, the scan skips it if absent)
   - `searchsploit` (provided by `exploitdb`)
+- **Local CISA KEV mirror** (optional, enables KEV enrichment) — populate it once with
+  `scripts/update_kev.sh`; see `app/data/kev/README.md`.
 
 ### Installation
 
@@ -216,7 +251,10 @@ venv/bin/pip install -r requirements.txt
 
 # 3. Scanners (Kali pre-installs most) + Caddy for the HTTPS option
 sudo apt update
-sudo apt install -y nmap nuclei whatweb gobuster exploitdb dirb caddy libnss3-tools
+sudo apt install -y nmap nuclei whatweb gobuster zaproxy exploitdb dirb caddy libnss3-tools
+
+# 4. (optional) populate the local CISA KEV mirror for exploited-in-the-wild flags
+./scripts/update_kev.sh
 ```
 
 Then pick how to run it:
@@ -273,14 +311,19 @@ trust it (see *Accessing the dashboard over HTTPS* above).
 │   ├── extensions.py               # db, migrate
 │   ├── models/                     # ScanJob, ScanResult, ExploitCorrelation
 │   ├── controllers/                # Pages / Scan / Tool / Report (Blueprints)
-│   ├── engine/                     # ManagedTool, BaseScanner, registry, orchestration
-│   ├── parsers/                    # One parser per tool + PARSERS dispatch map
-│   ├── services/                   # DatabaseManager, ExploitCorrelator, ReportGenerator
-│   └── templates/                  # Jinja2: index.html, dashboard.html, history.html
-├── migrations/                     # Alembic schema history (do not skip)
+│   ├── engine/                     # BaseScanner + Nmap/WhatWeb/Nuclei/Gobuster/ZAP, registry, orchestration
+│   ├── parsers/                    # One parser per tool (incl. zap_parser) + PARSERS dispatch
+│   ├── services/                   # DatabaseManager, ExploitCorrelator, ReportGenerator,
+│   │                               #   finding_dedup, kev_catalog, redaction
+│   ├── data/kev/                   # Local CISA KEV mirror (JSON is gitignored; see README)
+│   ├── static/                     # theme.css
+│   └── templates/                  # Jinja2: base, index, dashboard, history
+├── migrations/                     # Alembic schema history (head d1e6f4a8b2c5 — do not skip)
+├── scripts/                        # update_kev.sh / update_kev.ps1 (refresh the KEV mirror)
+├── tests/                          # ranking fixture test (test_ranking_order.py)
 ├── run.py                          # Entry point: from app import create_app
 ├── requirements.txt
-├── ARCHITECTURE.md                       # Detailed architecture documentation
+├── ARCHITECTURE.md                 # Detailed architecture documentation
 ├── FYP_PROJECT_SPEC.md             # FYP project specification
 └── README.md
 ```
