@@ -1,6 +1,9 @@
 from flask import Blueprint, render_template, request
 
 from app.extensions import auth
+from app.services.finding_dedup import (
+    finding_totals, group_version_conflicts,
+)
 
 # Order is meaningful — the Chart.js dataset slices in this order.
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info"]
@@ -12,6 +15,18 @@ def _severity_counts(scan):
     for r in scan.results:
         counts[r.severity] = counts.get(r.severity, 0) + 1
     return counts
+
+
+def _unique_count(results):
+    """Unique finding count — collapses IDENTITY clusters (the same finding seen
+    by several tools counts once), but NOT co-location clusters. Thin wrapper
+    over `finding_totals` kept for the existing tests/callers."""
+    return finding_totals(results)[2]
+
+
+def _prioritised(results):
+    """Findings ordered by the prioritisation rule (KEV → exploit → severity)."""
+    return sorted(results, key=lambda r: r.priority_key)
 
 
 class PagesController:
@@ -48,15 +63,22 @@ class PagesController:
             latest = self.db.latest_scan()
             scans = [latest] if latest else []
 
-        # Pre-compute per-scan severity counts so the template stays declarative.
-        scan_views = [
-            {
+        # Pre-compute per-scan severity counts + priority ordering so the
+        # template stays declarative.
+        scan_views = []
+        for scan in scans:
+            reported, collapsed, unique = finding_totals(scan.results)
+            scan_views.append({
                 "scan": scan,
                 "counts": _severity_counts(scan),
-                "total_findings": len(scan.results),
-            }
-            for scan in scans
-        ]
+                # Three honest counts: what the tools reported, what remains after
+                # collapsing repeated template hits, and the cross-tool unique total.
+                "reported_findings": reported,
+                "total_findings": collapsed,
+                "unique_findings": unique,
+                "version_conflicts": group_version_conflicts(scan.results),
+                "results": _prioritised(scan.results),
+            })
         return render_template(
             "dashboard.html",
             scan_views=scan_views,

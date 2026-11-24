@@ -105,13 +105,15 @@ def create_app(config_class=DevConfig):
     from .services.db_manager import DatabaseManager
     from .services.exploit_correlator import ExploitCorrelator
     from .services.report_generator import ReportGenerator
+    from .services.kev_catalog import KevCatalog
     from .engine.searchsploit_adapter import SearchsploitAdapter
     from .engine.orchestration import OrchestrationEngine
 
     db_manager = DatabaseManager(db)
     searchsploit = SearchsploitAdapter()
-    correlator = ExploitCorrelator(searchsploit, db_manager)
-    report_gen = ReportGenerator()
+    kev_catalog = KevCatalog()
+    correlator = ExploitCorrelator(searchsploit, db_manager, kev_catalog=kev_catalog)
+    report_gen = ReportGenerator(kev_catalog=kev_catalog)
     orchestrator = OrchestrationEngine(app, db_manager, correlator)
 
     # --- Register controllers --------------------------------------------

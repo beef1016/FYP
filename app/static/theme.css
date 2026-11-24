@@ -277,6 +277,49 @@ svg { flex-shrink: 0; }
 .severity-Low      { background: #3FBF86; color: #04251A; border: 1px solid #6FD8A8; }
 .severity-Info     { background: transparent; color: var(--muted); border: 1px solid #3A4B80; }
 
+/* CISA KEV marker — "actively exploited in the wild" priority flag. Shares the
+   coral accent with the exploit badge but carries a border so it reads as a
+   distinct, KEV-specific signal when stacked above the exploit/context rows. */
+.badge.badge-kev {
+    background: var(--accent); color: #2B0805 !important;
+    border: 1px solid #FFB3A8; font-size: 0.66rem; padding: 0.3em 0.55em;
+}
+.kev-note { color: var(--accent-ink) !important; }
+
+/* Cross-tool corroboration — "also detected by …". A calm blue link tone, kept
+   deliberately distinct from the red KEV/exploit alarms: corroboration is an
+   informational provenance signal (two tools agreed), not a severity. */
+.badge.badge-corroborated {
+    background: var(--blue-tint-2); color: #BFD3FF !important;
+    border: 1px solid var(--border-2); font-weight: 600;
+    font-size: 0.64rem; padding: 0.28em 0.55em;
+}
+/* Presumed — a version-inferred finding (not confirmed by a response). Amber
+   outline: a caution, distinct from severity. */
+.badge.badge-presumed {
+    background: transparent; color: #E0B341 !important;
+    border: 1px solid #7A5E1E; font-weight: 600;
+    font-size: 0.62rem; padding: 0.26em 0.5em; text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+/* Confirmed — the tool observed the issue directly. Green outline: the
+   reassuring counterpart to "presumed", shown only on vulnerability-class rows. */
+.badge.badge-confirmed {
+    background: transparent; color: #4CC38A !important;
+    border: 1px solid #1E5E3E; font-weight: 600;
+    font-size: 0.62rem; padding: 0.26em 0.5em; text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* Co-location — "same path also mapped by …". A muted outline tone, visibly
+   weaker than corroboration: a shared location is NOT the same finding, so it
+   must not look like identity corroboration. */
+.badge.badge-colocated {
+    background: transparent; color: #8FA6D8 !important;
+    border: 1px dashed #3A4B80; font-weight: 600;
+    font-size: 0.62rem; padding: 0.26em 0.5em;
+}
+
 .status-COMPLETED { color: var(--ok-ink) !important; font-weight: 700; }
 .status-FAILED    { color: var(--accent-ink) !important; font-weight: 700; }
 .status-RUNNING, .status-PENDING { color: var(--light) !important; font-weight: 700; }

@@ -86,6 +86,11 @@ def parse_nmap_xml(xml_data: str, scan_id: str, target: str):
                 # correlator's second pass has a tight search query.
                 product=product or None,
                 version=version or None,
+                # Service/version detection is inferred from a banner, not a
+                # confirmed vulnerability check — presumed. (The label is hidden
+                # on these recon rows via ScanResult.show_evidence, but the value
+                # still orders presumed below confirmed within a tier.)
+                evidence="presumed",
             ))
 
         db.session.commit()

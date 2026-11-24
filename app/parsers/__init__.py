@@ -7,16 +7,18 @@ from .nmap_parser import parse_nmap_xml
 from .whatweb_parser import parse_whatweb_json
 from .nuclei_parser import parse_nuclei_json
 from .gobuster_parser import parse_gobuster_text
+from .zap_parser import parse_zap_json
 
 PARSERS = {
     "nmap":     parse_nmap_xml,
     "whatweb":  parse_whatweb_json,
     "nuclei":   parse_nuclei_json,
     "gobuster": parse_gobuster_text,
+    "zap":      parse_zap_json,
 }
 
 __all__ = [
     "PARSERS",
     "parse_nmap_xml", "parse_whatweb_json",
-    "parse_nuclei_json", "parse_gobuster_text",
+    "parse_nuclei_json", "parse_gobuster_text", "parse_zap_json",
 ]

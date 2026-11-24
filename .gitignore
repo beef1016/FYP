@@ -21,6 +21,10 @@ instance/
 *.sqlite
 *.sqlite3
 
+# --- Offline enrichment data (refreshed, not source) ---
+# The CISA KEV mirror is downloaded by scripts/update_kev.sh, not committed.
+app/data/kev/known_exploited_vulnerabilities.json
+
 # --- Generated reports ---
 # PDFs / JSON exports the app produces at runtime.
 exploitlink-report-*.pdf

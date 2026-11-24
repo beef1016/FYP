@@ -1,0 +1,61 @@
+{
+  "_comment": "Ranking fixture derived from the real Metasploitable 2 scan (exploitlink-192.168.114.130-4d8f00bd). Each entry carries only the fields that drive ScanResult.priority_key. `expected_order` is the id sequence the prioritiser must produce; test_ranking_order.py asserts it, locking the agreed tiered order so a future change can't silently reorder findings. See app/models/scan_result.py priority_key.",
+  "findings": [
+    {
+      "id": "php-cgi",
+      "tool_name": "Nuclei", "port": 80, "severity": "High",
+      "cve_id": "CVE-2012-1823", "kev_listed": true, "evidence": "confirmed",
+      "cvss_score": 7.5,
+      "exploits": [{"match_type": "cve"}],
+      "why": "KEV + confirmed -> tier 0 (top)"
+    },
+    {
+      "id": "vsftpd-backdoor",
+      "tool_name": "Nuclei", "port": 6200, "severity": "Critical",
+      "cve_id": "CVE-2011-2523", "kev_listed": false, "evidence": "confirmed",
+      "exploits": [{"match_type": "cve"}],
+      "why": "CVE-linked exploit, confirmed, Critical -> tier 1"
+    },
+    {
+      "id": "distcc-rce",
+      "tool_name": "Nuclei", "port": 3632, "severity": "High",
+      "cve_id": "CVE-2004-2687", "kev_listed": false, "evidence": "confirmed",
+      "exploits": [{"match_type": "cve"}],
+      "why": "CVE-linked exploit, confirmed, High -> tier 1 (below the Critical vsftpd)"
+    },
+    {
+      "id": "php-oom",
+      "tool_name": "Nuclei", "port": 80, "severity": "Critical",
+      "cve_id": "CVE-2026-109618", "kev_listed": true, "evidence": "presumed",
+      "cvss_score": 9.2, "epss_score": 0.99999,
+      "exploits": [{"match_type": "cve"}],
+      "why": "KEV but PRESUMED -> drops out of tier 0; CVE exploit -> tier 1, sorts last (presumed)"
+    },
+    {
+      "id": "samba-printing",
+      "tool_name": "Nuclei", "port": 445, "severity": "Critical",
+      "cve_id": "CVE-2026-4480", "kev_listed": false, "evidence": "confirmed",
+      "exploits": [],
+      "why": "No exploit -> tier 2, ranked by Critical severity"
+    },
+    {
+      "id": "pgsql-empty-pw",
+      "tool_name": "Nuclei", "port": 5432, "severity": "Critical",
+      "cve_id": null, "kev_listed": false, "evidence": "confirmed",
+      "exploits": [],
+      "why": "No exploit -> tier 2, Critical (after Samba by stable content key: port 445 < 5432)"
+    },
+    {
+      "id": "apache-banner",
+      "tool_name": "WhatWeb", "port": 80, "severity": "Info",
+      "cve_id": null, "kev_listed": false, "evidence": "presumed",
+      "product": "Apache", "version": "2.2.8",
+      "exploits": [{"match_type": "product"}],
+      "why": "Banner-only exploit must NOT elevate -> tier 2 Info, ranks below every Critical"
+    }
+  ],
+  "expected_order": [
+    "php-cgi", "vsftpd-backdoor", "distcc-rce", "php-oom",
+    "samba-printing", "pgsql-empty-pw", "apache-banner"
+  ]
+}

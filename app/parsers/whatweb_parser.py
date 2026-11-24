@@ -62,6 +62,10 @@ def parse_whatweb_json(json_data: str, scan_id: str, target: str,
                     raw_output=json.dumps({plugin_name: plugin_data}),
                     product=plugin_name if clean_version else None,
                     version=clean_version,
+                    # WhatWeb only fingerprints (banner/response signatures); it
+                    # never exploits, so every row is presumed. Label hidden on
+                    # these recon rows (see ScanResult.show_evidence).
+                    evidence="presumed",
                 ))
 
         db.session.commit()

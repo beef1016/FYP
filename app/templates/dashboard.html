@@ -120,7 +120,7 @@
         <div class="findings-head">
             <div>
                 <h5>Findings for {{ scan.target }}</h5>
-                <small>Click the Severity header to change the order.</small>
+                <small>Ordered by priority: actively-exploited (CISA KEV) first, then findings with a public exploit, then by severity. Click the Severity header to re-sort.</small>
             </div>
         </div>
         <div class="card-body p-4">
@@ -143,9 +143,22 @@
                             </div>
                             {% endif %}
                         {% endfor %}
-                        <div class="summary-pill">
+                        {% if view.reported_findings != view.total_findings %}
+                        <div class="summary-pill"
+                             title="Raw hits the tools emitted, before repeated hits of the same template (on the same host:port) were collapsed into one row.">
+                            <div class="num">{{ view.reported_findings }}</div>
+                            <div class="lbl">tool-reported</div>
+                        </div>
+                        {% endif %}
+                        <div class="summary-pill"
+                             title="Rows after collapsing repeated template hits within a tool. This is what the table lists.">
                             <div class="num">{{ view.total_findings }}</div>
-                            <div class="lbl">total findings</div>
+                            <div class="lbl">findings{% if view.reported_findings != view.total_findings %} &middot; {{ view.reported_findings - view.total_findings }} repeats collapsed{% endif %}</div>
+                        </div>
+                        <div class="summary-pill"
+                             title="Unique findings also collapse the same issue reported by multiple tools (identity matches) into one. Co-located findings at a shared path stay separate.">
+                            <div class="num">{{ view.unique_findings }}</div>
+                            <div class="lbl">unique{% if view.total_findings != view.unique_findings %} &middot; {{ view.total_findings - view.unique_findings }} merged{% endif %}</div>
                         </div>
                     </div>
                 </div>
@@ -164,7 +177,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for r in scan.results %}
+                    {% for r in view.results %}
                     <tr>
                         <td><span class="badge bg-secondary">{{ r.tool_name }}</span></td>
                         <td><span class="badge severity-{{ r.severity }}">{{ r.severity }}</span></td>
@@ -174,7 +187,31 @@
                                 {% if r.service %}<br><span class="text-muted">{{ r.service }}</span>{% endif %}
                             </small>
                         </td>
-                        <td><small>{{ r.finding }}</small></td>
+                        <td>
+                            <small>{{ r.finding_redacted }}</small>
+                            {% if r.is_corroborated %}
+                                <br>
+                                <span class="badge badge-corroborated mt-1"
+                                      title="The same issue was independently reported by {{ r.corroborating_tools | join(', ') }} in this scan — findings are kept separately and linked, not merged.">
+                                    &#128279; also detected by {{ r.corroborating_tools | join(', ') }}
+                                </span>
+                                {% set conflict = view.version_conflicts.get(r.dup_group) %}
+                                {% if conflict %}
+                                <br>
+                                <span class="badge badge-presumed mt-1"
+                                      title="The tools in this group reported different software versions. Both are shown rather than silently merged.">
+                                    &#9888; versions differ: {{ conflict | join(' / ') }}
+                                </span>
+                                {% endif %}
+                            {% endif %}
+                            {% if r.is_colocated %}
+                                <br>
+                                <span class="badge badge-colocated mt-1"
+                                      title="Another tool mapped the same URL path, but did not necessarily find the same issue. This marks a shared location (e.g. an entry point), not corroboration of this finding.">
+                                    &#128205; same path also mapped by {{ r.colocated_tools | join(', ') }}
+                                </span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if r.cve_id %}
                                 <a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id | upper }}"
@@ -183,6 +220,22 @@
                                    title="View on NVD">CVE: {{ r.cve_id }}</a><br>
                             {% elif r.product and r.version %}
                                 <span class="badge bg-secondary mb-1">{{ r.product }} {{ r.version }}</span><br>
+                            {% endif %}
+                            {% if r.kev_listed %}
+                                <span class="badge badge-kev mb-1"
+                                      title="Listed in CISA Known Exploited Vulnerabilities — exploited in the wild{% if r.kev_data and r.kev_data.dateAdded %} since {{ r.kev_data.dateAdded }}{% endif %}{% if r.kev_ransomware %} · linked to ransomware{% endif %}">
+                                    CISA KEV · exploited in the wild{% if r.kev_ransomware %} · ransomware{% endif %}
+                                </span><br>
+                            {% endif %}
+                            {% if r.show_evidence and r.is_presumed %}
+                                <span class="badge badge-presumed mb-1"
+                                      title="Inferred from a version or banner, not confirmed by a response. Ranked below confirmed findings in its tier.">presumed</span><br>
+                            {% elif r.show_evidence %}
+                                <span class="badge badge-confirmed mb-1"
+                                      title="Observed directly by the tool (a response matched, a login succeeded, or a payload fired) — not merely inferred from a banner.">confirmed</span><br>
+                            {% endif %}
+                            {% if r.cvss_score or r.epss_score %}
+                                <small class="text-muted d-block mb-1">{% if r.cvss_score %}CVSS {{ r.cvss_score }}{% endif %}{% if r.cvss_score and r.epss_score is not none %} &middot; {% endif %}{% if r.epss_score is not none %}EPSS {{ '%.2f' % r.epss_score }}{% endif %}</small>
                             {% endif %}
                             {% if r.has_public_exploit %}
                                 <span class="badge bg-danger">{{ r.correlations | length }} public exploit(s)</span>
@@ -200,19 +253,26 @@
                                     {% else %}
                                         <small class="text-muted">{{ c.exploit_title }}</small>
                                     {% endif %}
+                                    {% if (c.match_type or 'product') == 'cve' %}
+                                        <span class="badge badge-confirmed ms-1" style="font-size:0.6rem;" title="Exploit targets this finding's CVE — this is what elevates ranking.">CVE match</span>
+                                    {% else %}
+                                        <span class="badge badge-presumed ms-1" style="font-size:0.6rem;" title="Matched only by software banner, not a specific CVE — shown for reference, does not elevate ranking.">banner match</span>
+                                    {% endif %}
                                     {% if c.synopsis %}<br><small class="text-info">{{ c.synopsis }}</small>{% endif %}
                                     {% if c.exploit_path %}<br><small class="text-muted">{{ c.exploit_path }}</small>{% endif %}
                                     </div>
                                 {% endfor %}
                                 </div>
                             {% else %}
-                                {% if r.cve_id or (r.product and r.version) %}
+                                {% if r.kev_listed %}
+                                    {# KEV badge already shown above; context follows below #}
+                                {% elif r.cve_id or (r.product and r.version) %}
                                     <span class="badge bg-success">No public exploit</span>
                                 {% else %}
                                     <span class="badge bg-secondary">{{ r.finding_class | capitalize }}</span>
                                 {% endif %}
                                 {% if r.exploitation_context %}
-                                    <br><small class="text-muted">{{ r.exploitation_context }}</small>
+                                    <br><small class="{{ 'kev-note' if r.kev_listed else 'text-muted' }}">{{ r.exploitation_context }}</small>
                                 {% endif %}
                             {% endif %}
                         </td>

@@ -58,6 +58,10 @@ services:
     volumes:
       # SQLite DB persistence across container restarts.
       - ./instance:/app/instance
+      # CISA KEV mirror — runtime data, not image content. Populate/refresh it
+      # on the host with scripts/update_kev.(sh|ps1); the container reads it
+      # live, so a KEV refresh needs no image rebuild.
+      - ./app/data/kev:/app/app/data/kev
 
     environment:
       # === REQUIRED: app refuses to start without this ===

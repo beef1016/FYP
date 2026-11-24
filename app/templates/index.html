@@ -107,16 +107,20 @@ const ICONS = {
     nuclei: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.500" fill="currentColor"/>',
     gobuster: '<path d="M21.500 18.500a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h4.500l2 2.500h8.500a2 2 0 0 1 2 2z"/>',
     searchsploit: '<circle cx="10.500" cy="10.500" r="6.500"/><line x1="20" y1="20" x2="15.300" y2="15.300"/>',
+    zap: '<polygon points="13 2 4 14 11 14 10 22 20 9 13 9 13 2"/>',
+    'cisa-kev': '<path d="M12 2 4 5.5v6c0 5 3.4 8.7 8 10.5 4.6-1.8 8-5.5 8-10.5v-6L12 2z"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12" y2="16.2"/>',
 };
 const ICON_DEFAULT = '<path d="M14.700 6.300a1 1 0 0 0 0 1.400l1.600 1.600a1 1 0 0 0 1.400 0l3.770-3.770a6 6 0 0 1-7.940 7.940l-6.910 6.910a2.120 2.120 0 0 1-3-3l6.910-6.910a6 6 0 0 1 7.940-7.940l-3.760 3.760z"/>';
-const ICON_COLOR = { nmap: 'green', whatweb: 'purple', nuclei: 'red', gobuster: 'yellow', searchsploit: 'blue' };
-const TOOL_LABEL = { nmap: 'Nmap', whatweb: 'WhatWeb', nuclei: 'Nuclei', gobuster: 'Gobuster', searchsploit: 'SearchSploit' };
+const ICON_COLOR = { nmap: 'green', whatweb: 'purple', nuclei: 'red', gobuster: 'yellow', searchsploit: 'blue', zap: 'purple', 'cisa-kev': 'red' };
+const TOOL_LABEL = { nmap: 'Nmap', whatweb: 'WhatWeb', nuclei: 'Nuclei', gobuster: 'Gobuster', searchsploit: 'SearchSploit', zap: 'OWASP ZAP', 'cisa-kev': 'CISA KEV' };
 const TOOL_DESC = {
     nmap: 'Discovers open ports, services and hosts on a network.',
     whatweb: 'Identifies technologies used by a website.',
     nuclei: 'Checks for known vulnerabilities using templates.',
     gobuster: 'Discovers hidden directories and resources.',
     searchsploit: 'Searches known exploit references.',
+    zap: 'Dynamic web-app scanning (XSS, SQLi, insecure headers).',
+    'cisa-kev': 'Flags CVEs that are actively exploited in the wild.',
 };
 
 function escapeHtml(s) {
@@ -144,18 +148,27 @@ async function loadTools() {
     }
 }
 
+// ZAP is the heaviest/slowest tool (JVM + spider + active scan), so it's
+// selectable but OFF by default — the user opts in when they want DAST coverage.
+const OPT_IN = new Set(['zap']);
+
 function renderToolCheckboxes(tools) {
     const scanners = tools.filter(t => t.is_scanner);
-    toolCheckboxRow.innerHTML = scanners.map(t => `
+    toolCheckboxRow.innerHTML = scanners.map(t => {
+        const checked = t.installed && !OPT_IN.has(t.name);
+        const note = t.installed
+            ? (OPT_IN.has(t.name) ? ' <small class="text-muted">(slower — opt in)</small>' : '')
+            : ' <small class="text-muted">(install first)</small>';
+        return `
         <div class="form-check">
             <input class="form-check-input tool-cb" type="checkbox"
-                   value="${t.name}" id="cb-${t.name}" ${t.installed ? 'checked' : ''}
+                   value="${t.name}" id="cb-${t.name}" ${checked ? 'checked' : ''}
                    ${t.installed ? '' : 'disabled'}>
             <label class="form-check-label" for="cb-${t.name}">
-                ${t.name}${t.installed ? '' : ' <small class="text-muted">(install first)</small>'}
+                ${TOOL_LABEL[t.name] || t.name}${note}
             </label>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 function shortVersion(v) {
@@ -180,7 +193,7 @@ function renderTools(tools) {
                     <div class="tool-name">${escapeHtml(label)}
                         ${t.installed ? '<span class="badge bg-success">Installed</span>' : '<span class="badge badge-off">Not installed</span>'}
                     </div>
-                    <div class="tool-ver" title="${escapeHtml(ver)}">${ver ? escapeHtml(ver) : 'apt: ' + escapeHtml(t.apt_package)}</div>
+                    <div class="tool-ver" title="${escapeHtml(ver)}">${ver ? escapeHtml(ver) : (t.apt_package ? 'apt: ' + escapeHtml(t.apt_package) : 'data feed')}</div>
                 </div>
             </div>
             <div class="tool-desc">${TOOL_DESC[key] || ''}</div>

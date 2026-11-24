@@ -38,7 +38,7 @@ _HTTP_PORT_FALLBACK = {80, 443, 8000, 8008, 8080, 8443, 8888}
 # Runs sequentially in phase 1.
 _SEQUENTIAL_FIRST = {"nmap"}
 # Tools that need an HTTP/HTTPS port and iterate once per detected port.
-_HTTP_AWARE = {"whatweb", "gobuster"}
+_HTTP_AWARE = {"whatweb", "gobuster", "zap"}
 # Cap on concurrent worker threads. I/O-bound, so we just need enough to
 # overlap subprocess waits without spawning silly numbers of threads.
 _MAX_CONCURRENT_WORKERS = 4

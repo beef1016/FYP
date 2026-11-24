@@ -18,6 +18,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from app.engine.registry import SCANNER_REGISTRY
 from app.extensions import auth, limiter
+from app.services.finding_dedup import finding_totals, group_version_conflicts
 
 
 # Allowed URL schemes for the URL-input convenience parser.
@@ -217,6 +218,9 @@ class ScanController:
         job = self.db.get_scan(scan_id)
         if not job:
             return jsonify({"error": "Scan not found"}), 404
+        results = sorted(job.results, key=lambda r: r.priority_key)
+        reported, collapsed, unique = finding_totals(results)
+        conflicts = group_version_conflicts(results)
         return jsonify({
             "scan_id": job.scan_id,
             "target": job.target,
@@ -224,6 +228,9 @@ class ScanController:
             "selected_modules": job.selected_modules or [],
             "start_time": job.start_time.isoformat() if job.start_time else None,
             "end_time": job.end_time.isoformat() if job.end_time else None,
+            "finding_counts": {
+                "reported": reported, "collapsed": collapsed, "unique": unique,
+            },
             "results": [
                 {
                     "id": r.id,
@@ -231,19 +238,35 @@ class ScanController:
                     "host": r.host,
                     "port": r.port,
                     "service": r.service,
-                    "finding": r.finding,
+                    "finding": r.finding_redacted,   # credentials masked
                     "severity": r.severity,
+                    "priority_tier": r.priority_tier,
+                    "priority_tier_rank": r.priority_tier_rank,
+                    "evidence": r.evidence or "confirmed",
+                    "show_evidence": r.show_evidence,
+                    "cvss_score": r.cvss_score,
+                    "epss_score": r.epss_score,
                     "cve_id": r.cve_id,
                     "has_public_exploit": r.has_public_exploit,
+                    "has_cve_exploit": r.has_cve_exploit,
+                    "instance_count": r.instance_count,
+                    "kev_listed": r.kev_listed,
+                    "kev": r.kev_data,
+                    "dup_group": r.dup_group,
+                    "corroborated_by": r.corroborating_tools,
+                    "version_conflict": conflicts.get(r.dup_group),
+                    "loc_group": r.loc_group,
+                    "colocated_with": r.colocated_tools,
                     "exploits": [
                         {
                             "title": c.exploit_title,
                             "edb_id": c.exploit_id,
                             "path": c.exploit_path,
+                            "match_type": c.match_type or "product",
                         }
                         for c in r.correlations
                     ],
                 }
-                for r in job.results
+                for r in results
             ],
         })
